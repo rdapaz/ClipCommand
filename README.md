@@ -208,6 +208,7 @@ clipcommand/
 ├── clipcommand.py        # Main application
 ├── make_transforms.py    # Generates the example transforms/ folder
 ├── transforms/           # Drop your .py transform scripts here
+│   ├── transforms.ini    # Chain definitions and per-transform config overrides
 │   ├── json_pretty.py
 │   ├── upper.py
 │   └── ...
@@ -220,6 +221,42 @@ clipcommand/
 
 ---
 
+
+## Chaining transforms
+
+Build a multi-step pipeline using the `[+]` and `[−]` buttons in the UI. Each
+step feeds its output as the next step's input. The stats bar shows the full
+chain: `trim_whitespace → csv_to_markdown → word_from_yaml_active`.
+
+Save a chain in `transforms/transforms.ini` and it will appear in the first
+dropdown prefixed with `⛓`:
+
+```ini
+[chain:firewall_review]
+description = Extract IPs, sort, insert into Word
+steps       = ot_ip_extract, line_sort, word_from_yaml_active
+```
+
+## Per-transform configuration
+
+Override module-level constants (like `BOOKMARK` or `HEADING_ROWS`) without
+editing the script itself:
+
+```ini
+[transform:word_from_yaml_active]
+bookmark     = bk2
+heading_rows = 1
+```
+
+Values are auto-coerced to `int` or `float` where possible.
+
+## Dry run mode
+
+Click **🔍 Dry Run** to send the final pipeline output to a preview pane
+instead of the clipboard. The status dot turns orange as a reminder.
+The preview pane has **Copy to clipboard** and **Clear** buttons.
+
+---
 ## Acknowledgements
 
 Inspired by the Perl Monks community and the original

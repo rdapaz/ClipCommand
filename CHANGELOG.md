@@ -5,6 +5,32 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.0] — 2025
+### Added
+- **Chain builder UI** — dynamic list of pipeline steps, each with its own
+  dropdown, `[+]` (insert below) and `[−]` (remove) buttons. Step labels
+  update automatically ("Step 1:" / "Then:").
+- **Chain definitions in transforms.ini** — define named multi-step pipelines;
+  they appear in the Step 1 dropdown prefixed with `⛓` and auto-expand into
+  rows on selection.
+- **Per-transform config overrides via transforms.ini** — set `BOOKMARK`,
+  `HEADING_ROWS`, `DELIMITER`, or any other module-level constant without
+  editing the script. Values are auto-coerced to int/float where applicable.
+- **Dry run mode** — toggle with `🔍 Dry Run` button; status dot turns orange.
+  Final pipeline output goes to a dedicated preview pane instead of the
+  clipboard. Preview pane has Copy and Clear buttons.
+- **Reload All** — hot-reloads every script in the current chain simultaneously.
+- Stats bar now shows the full chain as `step1 → step2 → step3`.
+- `transforms.ini` sample file with example chains and overrides.
+
+### Changed
+- Single-transform mode is unchanged in behaviour; chain rows simply collapse
+  to one row.
+- `_run_transform()` replaced by `_run_chain()` which handles 1..N steps.
+
+---
+
+
 ## [1.1.0] — 2025
 ### Added
 - **Transform folder picker** — scan `./transforms/` on startup and expose all
