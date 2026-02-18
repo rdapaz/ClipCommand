@@ -1,6 +1,7 @@
 # Core dependency — cross-platform clipboard access
 pyperclip>=1.8.2
-
+PYYAML>=6.0.2
+pywin32>=311; sys_platform == "win32"
 # Optional — hotkey support (--hotkey flag)
 # Linux note: also requires sudo or uinput group membership
 # keyboard>=0.13.5
