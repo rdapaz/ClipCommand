@@ -1,90 +1,55 @@
 #!/usr/bin/env python3
 """
 Parse JSON from the clipboard (a list of lists) and insert the rows into a
-bookmarked table in a Word document.
+bookmarked table in a specific Word document file.
 
-The JSON must be a list of lists, e.g.:
+Works on Windows (COM), macOS (AppleScript), and Linux (python-docx / file).
+
+On Windows and macOS the document is opened if not already, or the running
+instance is used. On Linux the file is edited directly on disk (close it in
+Word first).
+
+The JSON must be a list of lists:
     [
-        ["Alice", "Engineer", "Perth"],
-        ["Bob",   "Analyst",  "Sydney"]
+        ["Alpha", "Bravo",  "Charlie"],
+        ["Delta", "Echo",   "Foxtrot"],
+        ["Golf",  "Hotel",  "India"]
     ]
 
-Configure the three constants below before use, then drop this file into
-your ClipCommand transforms/ folder and select it from the dropdown.
+Configure the constants below, then drop this file into your ClipCommand
+transforms/ folder and select it from the dropdown.
 """
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-WORD_DOC_PATH = r"C:\path\to\your\document.docx"
+WORD_DOC_PATH = r"C:\path\to\your\document.docx"   # update this
 BOOKMARK      = "bk1"
 HEADING_ROWS  = 1
 
 # ─────────────────────────────────────────────────────────────────────────────
 
 import json
-import re
 import sys
+from pathlib import Path
 
-
-def _get_win32com_word():
-    """Return a live Word.Application COM object, clearing the gen_py cache if needed."""
-    import shutil
-    from win32com import client
-    try:
-        return client.gencache.EnsureDispatch("Word.Application")
-    except AttributeError:
-        import os
-        for mod in list(sys.modules):
-            if re.match(r"win32com\.gen_py\..+", mod):
-                del sys.modules[mod]
-        shutil.rmtree(
-            os.path.join(os.environ.get("LOCALAPPDATA"), "Temp", "gen_py"),
-            ignore_errors=True,
-        )
-        return client.gencache.EnsureDispatch("Word.Application")
-
-
-def _update_table(app, doc, bookmark, data, heading_rows):
-    """Insert *data* (list of lists) into the first table inside *bookmark*."""
-    word_range = doc.Bookmarks(bookmark).Range
-    table      = word_range.Tables(1)
-    rows_needed = len(data) + heading_rows
-
-    if table.Rows.Count < rows_needed:
-        table.Select()
-        app.Selection.InsertRowsBelow(NumRows=rows_needed - table.Rows.Count)
-
-    for row_idx, entry in enumerate(data, start=heading_rows + 1):
-        for col_idx, value in enumerate(entry, start=1):
-            table.Cell(row_idx, col_idx).Range.Text = str(value)
+sys.path.insert(0, str(Path(__file__).parent))
+from word_utils import update_table, WordUtilsError
 
 
 def transform(text: str) -> str:
-    # ── Parse ────────────────────────────────────────────────────────────────
     try:
         data = json.loads(text.strip())
     except json.JSONDecodeError as exc:
         return f"[word_from_json] JSON parse error: {exc}"
 
-    if not isinstance(data, list) or not all(isinstance(row, list) for row in data):
+    if not isinstance(data, list) or not all(isinstance(r, list) for r in data):
         return "[word_from_json] Input must be a JSON list of lists."
-
     if not data:
         return "[word_from_json] No data rows found — nothing to insert."
 
-    # ── Write to Word ────────────────────────────────────────────────────────
     try:
-        app = _get_win32com_word()
-        app.Visible       = True
-        app.DisplayAlerts = False
-        app.Documents.Open(WORD_DOC_PATH)
-        doc = app.ActiveDocument
-
-        _update_table(app, doc, BOOKMARK, data, HEADING_ROWS)
-
-        return (
-            f"[word_from_json] OK — {len(data)} row(s) written to "
-            f"bookmark '{BOOKMARK}' in {WORD_DOC_PATH}"
-        )
-    except Exception as exc:
-        return f"[word_from_json] Word error: {exc}"
+        status = update_table(BOOKMARK, data, HEADING_ROWS,
+                              doc_path=WORD_DOC_PATH)
+        return f"[word_from_json] {status}"
+    except WordUtilsError as exc:
+        return f"[word_from_json] Error: {exc}"
