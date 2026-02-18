@@ -49,9 +49,9 @@ def transform(text: str) -> str:
     if not rows:
         return "[word_from_csv] No data found in clipboard — nothing to insert."
 
-    data = rows[HEADING_ROWS:]
-    if not data:
-        return "[word_from_csv] Only a header row found — no data rows to insert."
+    # All clipboard rows are data — HEADING_ROWS only controls the Word table
+    # offset (how many heading rows already exist in the table to skip over).
+    data = rows
 
     try:
         status = update_table(BOOKMARK, data, HEADING_ROWS,
