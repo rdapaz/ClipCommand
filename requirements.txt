@@ -1,0 +1,6 @@
+# Core dependency — cross-platform clipboard access
+pyperclip>=1.8.2
+
+# Optional — hotkey support (--hotkey flag)
+# Linux note: also requires sudo or uinput group membership
+# keyboard>=0.13.5
