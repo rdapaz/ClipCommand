@@ -81,11 +81,20 @@ C = {
 # ─── INI loader ──────────────────────────────────────────────────────────────
 
 def load_ini(folder: str) -> configparser.ConfigParser:
-    """Load transforms.ini from the transforms folder if it exists."""
+    """
+    Load transforms.ini — checks the transforms folder first, then one level up.
+    This allows placing transforms.ini next to clipcommand.py rather than inside
+    the transforms/ subfolder.
+    """
     cfg = configparser.ConfigParser()
-    ini_path = Path(folder) / "transforms.ini"
-    if ini_path.exists():
-        cfg.read(ini_path, encoding="utf-8")
+    candidates = [
+        Path(folder) / "transforms.ini",          # inside transforms/
+        Path(folder).parent / "transforms.ini",   # next to clipcommand.py
+    ]
+    for ini_path in candidates:
+        if ini_path.exists():
+            cfg.read(ini_path, encoding="utf-8-sig")
+            break
     return cfg
 
 
@@ -417,7 +426,7 @@ class ClipCommandApp:
         self._chain_panel = tk.Frame(self.root, bg=C["bg_mid"], pady=4)
         self._chain_panel.pack(fill=tk.X)
 
-        # Rescan button lives at top-right of chain panel
+        # Rescan button + chain selector live in the same bar
         rescan_bar = tk.Frame(self._chain_panel, bg=C["bg_mid"])
         rescan_bar.pack(fill=tk.X, padx=8, pady=(0, 2))
         tk.Button(
@@ -425,6 +434,15 @@ class ClipCommandApp:
             bg=C["bg_input"], fg=C["fg"], relief=tk.FLAT,
             activebackground="#6272a4", cursor="hand2", padx=4
         ).pack(side=tk.RIGHT)
+
+        # Chain selector button — opens a simple pick dialog
+        self._chain_btn = tk.Button(
+            rescan_bar, text="⛓ Load chain…", command=self._open_chain_picker,
+            bg=C["bg_input"], fg=C["chain"], relief=tk.FLAT,
+            activebackground="#6272a4", cursor="hand2", padx=6,
+            font=("Courier", 9)
+        )
+        self._chain_btn.pack(side=tk.LEFT, padx=(0, 8))
 
         # Container for ChainRow widgets
         self._rows_frame = tk.Frame(self._chain_panel, bg=C["bg_mid"])
@@ -608,6 +626,109 @@ class ClipCommandApp:
                 + " → ".join(labels), "chain"
             )
 
+    def _open_chain_picker(self):
+        """Open a simple modal dialog listing all chains to load."""
+        all_chains = self._get_all_chains_with_status()
+
+        if not all_chains:
+            self._log("No chains defined in transforms.ini", "warn")
+            return
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Load Chain")
+        dlg.configure(bg=C["bg_mid"])
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        tk.Label(
+            dlg, text="Select a chain to load:",
+            fg=C["fg"], bg=C["bg_mid"],
+            font=("Courier", 10, "bold"), padx=12, pady=8
+        ).pack(anchor="w")
+
+        for chain, missing in all_chains:
+            is_valid = len(missing) == 0
+            row = tk.Frame(dlg, bg=C["bg_mid"])
+            row.pack(fill=tk.X, padx=8, pady=2)
+
+            def _make_cmd(c=chain):
+                def _cmd():
+                    dlg.destroy()
+                    self._load_chain(c)
+                    self._log(f"Chain loaded: {c['name']!r}", "chain")
+                return _cmd
+
+            tk.Button(
+                row,
+                text=f"  {chain['label']}",
+                command=_make_cmd() if is_valid else (lambda: None),
+                state=tk.NORMAL if is_valid else tk.DISABLED,
+                bg=C["bg_input"],
+                fg=C["chain"] if is_valid else C["fg_dim"],
+                relief=tk.FLAT, activebackground="#6272a4",
+                cursor="hand2" if is_valid else "arrow",
+                anchor="w", width=36,
+                font=("Courier", 9)
+            ).pack(side=tk.LEFT)
+
+            desc = chain.get("description", "")
+            if not is_valid:
+                desc = f"⚠ missing: {', '.join(missing)}"
+            if desc:
+                tk.Label(
+                    row, text=desc,
+                    fg=C["warn"] if not is_valid else C["fg_dim"],
+                    bg=C["bg_mid"],
+                    font=("Courier", 8), padx=8
+                ).pack(side=tk.LEFT)
+
+        tk.Button(
+            dlg, text="Cancel", command=dlg.destroy,
+            bg=C["bg_input"], fg=C["fg"], relief=tk.FLAT,
+            activebackground="#6272a4", cursor="hand2",
+            font=("Courier", 9), padx=8, pady=4
+        ).pack(pady=(6, 10))
+
+        self.root.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width()  // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
+        dlg.geometry(f"+{x}+{y}")
+        dlg.focus_set()
+
+    def _get_all_chains_with_status(self) -> list:
+        """
+        Return all chains as (chain_entry, missing_steps) tuples.
+        missing_steps is [] for valid chains, non-empty for broken ones.
+        """
+        valid_script_names = {
+            t["name"] for t in self._registry
+            if not t.get("is_chain") and t["fn"] is not None
+        }
+        result = []
+        for t in self._registry:
+            if not t.get("is_chain"):
+                continue
+            missing = [s for s in t.get("steps", []) if s not in valid_script_names]
+            result.append((t, missing))
+        return result
+
+    def _refresh_chain_selector(self):
+        """Update the chain button label to show count of available chains."""
+        if not hasattr(self, "_chain_btn"):
+            return
+        all_chains = self._get_all_chains_with_status()
+        n_total  = len(all_chains)
+        n_valid  = sum(1 for _, missing in all_chains if not missing)
+        if n_total == 0:
+            self._chain_btn.config(text="⛓ No chains", state=tk.DISABLED,
+                                   fg=C["fg_dim"])
+        else:
+            self._chain_btn.config(
+                text=f"⛓ Load chain… ({n_valid}/{n_total})",
+                state=tk.NORMAL, fg=C["chain"]
+            )
+
     # ── Transform registry ────────────────────────────────────────────────────
 
     def _refresh_transforms(self, preselect=None):
@@ -650,6 +771,7 @@ class ClipCommandApp:
                     row.set(prev)
 
         self._refresh_row_labels()
+        self._refresh_chain_selector()
         self._update_stats()
         self._reseed_clipboard()
 
