@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from word_utils import update_table, WordUtilsError
+from _word_utils import update_table, WordUtilsError
 
 
 def transform(text: str) -> str:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-word_utils.py — cross-platform Word table population utility for ClipCommand.
+_word_utils.py — cross-platform Word table population utility for ClipCommand.
 
 Drop this file into your transforms/ folder alongside the word_from_* scripts.
 Import it in any transform:

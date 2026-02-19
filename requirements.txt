@@ -5,10 +5,10 @@ pyperclip>=1.8.2
 # ── Word transform dependencies ───────────────────────────────────────────────
 
 # Windows: COM automation for live Word document access
-# (also provides win32com used by word_utils.py on Windows)
+# (also provides win32com used by _word_utils.py on Windows)
 pywin32>=311; sys_platform == "win32"
 
-# macOS: no extra packages needed — word_utils.py uses osascript (built-in)
+# macOS: no extra packages needed — _word_utils.py uses osascript (built-in)
 
 # Linux / cross-platform file-based fallback
 # Also useful on macOS/Windows if you prefer editing files directly
