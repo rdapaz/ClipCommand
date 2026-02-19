@@ -21,7 +21,7 @@ transforms/ folder. On Linux, set DOC_PATH to your .docx file path.
 
 BOOKMARK     = "bk1"
 HEADING_ROWS = 1      # set to 0 if CSV has no header row
-DELIMITER    = "|gi"    # change to "\t" for TSV, ";" for European CSV
+DELIMITER    = "|"    # change to "\t" for TSV, ";" for European CSV
 DOC_PATH     = ""     # Linux only — leave blank on Windows / macOS
 
 # ─────────────────────────────────────────────────────────────────────────────
