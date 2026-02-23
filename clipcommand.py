@@ -33,6 +33,7 @@ transforms.ini format:
 import argparse
 import configparser
 import importlib.util
+import os
 import sqlite3
 import sys
 import time
@@ -96,6 +97,54 @@ TAG_COLOURS = {
     "preview": C["fg_purple"],
     "chain":   C["chain"],
 }
+
+
+# ─── Config manager ──────────────────────────────────────────────────────────
+#
+# Stores persistent settings (e.g. ANTHROPIC_API_KEY) in config.ini
+# next to the executable. Loaded at startup and written when the user
+# provides a value via the first-run dialog.
+
+import configparser as _configparser
+
+def _config_path() -> Path:
+    """config.ini lives next to the executable (or clipcommand.py in dev)."""
+    if getattr(sys, "frozen", False):
+        # Running as PyInstaller bundle
+        return Path(sys.executable).parent / "config.ini"
+    return Path(__file__).parent / "config.ini"
+
+
+def load_config() -> _configparser.ConfigParser:
+    cfg = _configparser.ConfigParser()
+    cfg.read(str(_config_path()))
+    return cfg
+
+
+def save_config(section: str, key: str, value: str):
+    cfg = load_config()
+    if section not in cfg:
+        cfg[section] = {}
+    cfg[section][key] = value
+    with open(str(_config_path()), "w") as f:
+        cfg.write(f)
+
+
+def get_config_value(section: str, key: str, fallback: str = "") -> str:
+    return load_config().get(section, key, fallback=fallback)
+
+
+def ensure_api_key() -> str:
+    """
+    Return the Anthropic API key from environment or config.ini.
+    Does NOT show a dialog — call prompt_for_api_key() for that.
+    """
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key:
+        key = get_config_value("anthropic", "api_key", fallback="")
+    if key:
+        os.environ["ANTHROPIC_API_KEY"] = key  # make available to subprocesses
+    return key
 
 
 # ─── Stylesheet ───────────────────────────────────────────────────────────────
@@ -322,13 +371,17 @@ class ClipboardWorker(QObject):
     def set_active(self, active: bool):
         self._active = active
 
+    def set_busy(self, busy: bool):
+        self._busy = busy
+
     def stop(self):
         self._running = False
 
     def run(self):
+        self._busy = False
         self.reseed()
         while self._running:
-            if self._active:
+            if self._active and not self._busy:
                 try:
                     current = pyperclip.paste()
                     if current and current != self._last:
@@ -435,6 +488,9 @@ class ClipCommandWindow(QMainWindow):
         project_root = str(Path(__file__).parent)
         self._db = DBLogger(project_root)
 
+        # Load API key from config.ini if not already in environment
+        ensure_api_key()
+
         self._log_signal.connect(self._write_log)
 
         self._build_ui()
@@ -483,6 +539,10 @@ class ClipCommandWindow(QMainWindow):
         log_btn = QPushButton("📋 Log")
         log_btn.clicked.connect(self._open_log_browser)
         h_layout.addWidget(log_btn)
+
+        settings_btn = QPushButton("⚙ Settings")
+        settings_btn.clicked.connect(self._open_settings)
+        h_layout.addWidget(settings_btn)
 
         reload_btn = QPushButton("⟳ Reload")
         reload_btn.clicked.connect(self._reload_all)
@@ -900,6 +960,107 @@ class ClipCommandWindow(QMainWindow):
 
         self.log.moveCursor(QTextCursor.End)
 
+    def _open_settings(self):
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+            QLineEdit, QPushButton, QFormLayout, QCheckBox
+        )
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("ClipCommand — Settings")
+        dlg.setStyleSheet(build_stylesheet())
+        dlg.setModal(True)
+        dlg.setMinimumWidth(480)
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        # Title
+        title = QLabel("Settings")
+        title.setStyleSheet(f"color: {C['fg']}; font-size: 13px; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Form
+        form = QFormLayout()
+        form.setSpacing(8)
+
+        # API key field
+        current_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        self._api_key_input = QLineEdit()
+        self._api_key_input.setPlaceholderText("sk-ant-...")
+        self._api_key_input.setText(current_key)
+        self._api_key_input.setEchoMode(QLineEdit.Password)
+        self._api_key_input.setStyleSheet(
+            f"background-color: {C['bg_input']}; color: {C['fg']}; "
+            f"border: 1px solid {C['fg_dim']}; border-radius: 4px; padding: 4px 8px;"
+        )
+
+        # Show/hide toggle
+        show_cb = QCheckBox("Show")
+        show_cb.setStyleSheet(f"color: {C['fg_dim']};")
+        show_cb.toggled.connect(
+            lambda checked: self._api_key_input.setEchoMode(
+                QLineEdit.Normal if checked else QLineEdit.Password
+            )
+        )
+
+        key_row = QHBoxLayout()
+        key_row.addWidget(self._api_key_input)
+        key_row.addWidget(show_cb)
+
+        form.addRow(QLabel("Anthropic API Key:"), key_row)
+
+        # Config file path (info only)
+        cfg_path_lbl = QLabel(str(_config_path()))
+        cfg_path_lbl.setStyleSheet(f"color: {C['fg_dim']}; font-size: 10px;")
+        cfg_path_lbl.setWordWrap(True)
+        form.addRow(QLabel("Config file:"), cfg_path_lbl)
+
+        layout.addLayout(form)
+
+        # Note
+        note = QLabel(
+            "The API key is stored in plain text in config.ini next to the executable. "
+            "Required only for AI-powered transforms (e.g. aidinsight_email_reply)."
+        )
+        note.setStyleSheet(f"color: {C['fg_dim']}; font-size: 10px;")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(cancel_btn)
+
+        save_btn = QPushButton("Save")
+        save_btn.setStyleSheet(
+            f"background-color: {C['bg_input']}; color: {C['ok']}; "
+            f"font-weight: bold; border-radius: 4px; padding: 5px 16px;"
+        )
+
+        def _save():
+            key = self._api_key_input.text().strip()
+            if key:
+                save_config("anthropic", "api_key", key)
+                os.environ["ANTHROPIC_API_KEY"] = key
+                self._log("Anthropic API key saved to config.ini", "ok")
+            else:
+                # Clear it
+                save_config("anthropic", "api_key", "")
+                os.environ.pop("ANTHROPIC_API_KEY", None)
+                self._log("Anthropic API key cleared", "warn")
+            dlg.accept()
+
+        save_btn.clicked.connect(_save)
+        btn_row.addWidget(save_btn)
+        layout.addLayout(btn_row)
+
+        dlg.exec()
+
     def _open_log_browser(self):
         if self._log_browser is None or not self._log_browser.isVisible():
             self._log_browser = LogBrowserDialog(
@@ -967,6 +1128,16 @@ class ClipCommandWindow(QMainWindow):
 
     # ── Chain execution ───────────────────────────────────────────────────────
 
+    def _set_busy(self, busy: bool, label: str = ""):
+        if hasattr(self, "_worker"):
+            self._worker.set_busy(busy)
+        if busy:
+            self.status_dot.setStyleSheet(f"color: {C['fg_yellow']}; font-size: 16px;")
+            self._set_status(f"⏳ Working: {label}…")
+        else:
+            dot_colour = C["dry"] if self.dry_run else (C["ok"] if self.running else C["err"])
+            self.status_dot.setStyleSheet(f"color: {dot_colour}; font-size: 16px;")
+
     def _run_chain(self, clip_text: str, source: str = "clipboard"):
         steps = self._get_active_steps()
         if not steps:
@@ -976,59 +1147,68 @@ class ClipCommandWindow(QMainWindow):
         is_chain    = len(steps) > 1
         chain_label = " → ".join(s["name"] for s in steps)
 
-        if is_chain:
-            self._log(f"▶ Chain [{chain_label}] via {source}", "chain", chain_label)
-        else:
-            self._log(f"▶ [{steps[0]['name']}] via {source}", "info", steps[0]['name'])
+        # Block clipboard worker and show working indicator
+        self._set_busy(True, chain_label)
 
-        current = clip_text
-        for i, step in enumerate(steps):
-            if step["fn"] is None:
-                self._log(f"  ✗ Step {i+1} [{step['name']}] has no function (load error)", "err")
-                self.error_count += 1
-                self._update_stats()
-                return
-
-            preview_in = current[:80].replace("\n", "↵")
+        try:
             if is_chain:
-                self._log(f"  [{i+1}/{len(steps)}] {step['name']}", "chain")
-            self._log(f"   In:  {preview_in!r}{'…' if len(current) > 80 else ''}", "preview")
+                self._log(f"▶ Chain [{chain_label}] via {source}", "chain", chain_label)
+            else:
+                self._log(f"▶ [{steps[0]['name']}] via {source}", "info", steps[0]['name'])
 
-            try:
-                result = step["fn"](current)
-                if not isinstance(result, str):
-                    result = str(result)
-                preview_out = result[:80].replace("\n", "↵")
-                self._log(f"   Out: {preview_out!r}{'…' if len(result) > 80 else ''}", "ok")
-                # Also log the full result to DB if it looks like an error string
-                if len(result) > 80 or "\n" in result:
-                    self._log(f"   Full output: {result}", "info", step['name'])
-                current = result
-            except Exception as exc:
-                self._log(f"  ✗ Error in [{step['name']}]: {exc}", "err", step['name'])
-                self._log(traceback.format_exc(), "err", step['name'])
-                self.error_count += 1
-                self._update_stats()
-                self._set_status(f"Error in [{step['name']}]: {exc}")
-                return
+            current = clip_text
+            for i, step in enumerate(steps):
+                if step["fn"] is None:
+                    self._log(f"  ✗ Step {i+1} [{step['name']}] has no function (load error)", "err")
+                    self.error_count += 1
+                    self._update_stats()
+                    return
 
-        if self.dry_run:
-            self._log(f"  🔍 Dry run — {len(current)} chars sent to preview pane", "warn")
-            self._show_preview(current)
-            self._set_status(
-                f"Dry run OK [{chain_label}] @ {datetime.now().strftime('%H:%M:%S')}"
-            )
-        else:
-            pyperclip.copy(current)
-            if hasattr(self, '_worker'):
-                self._worker.update_last(current)
-            self._log(f"  ✓ {len(current)} chars written to clipboard", "ok")
-            self._set_status(
-                f"OK [{chain_label}] @ {datetime.now().strftime('%H:%M:%S')}"
-            )
+                preview_in = current[:80].replace("\n", "↵")
+                if is_chain:
+                    self._log(f"  [{i+1}/{len(steps)}] {step['name']}", "chain")
+                    self._set_status(f"⏳ [{i+1}/{len(steps)}] {step['name']}…")
+                else:
+                    self._set_status(f"⏳ {step['name']}…")
+                self._log(f"   In:  {preview_in!r}{'…' if len(current) > 80 else ''}", "preview")
 
-        self.transform_count += 1
-        self._update_stats()
+                try:
+                    result = step["fn"](current)
+                    if not isinstance(result, str):
+                        result = str(result)
+                    preview_out = result[:80].replace("\n", "↵")
+                    self._log(f"   Out: {preview_out!r}{'…' if len(result) > 80 else ''}", "ok")
+                    if len(result) > 80 or "\n" in result:
+                        self._log(f"   Full output: {result}", "info", step['name'])
+                    current = result
+                except Exception as exc:
+                    self._log(f"  ✗ Error in [{step['name']}]: {exc}", "err", step['name'])
+                    self._log(traceback.format_exc(), "err", step['name'])
+                    self.error_count += 1
+                    self._update_stats()
+                    self._set_status(f"Error in [{step['name']}]: {exc}")
+                    return
+
+            if self.dry_run:
+                self._log(f"  🔍 Dry run — {len(current)} chars sent to preview pane", "warn")
+                self._show_preview(current)
+                self._set_status(
+                    f"Dry run OK [{chain_label}] @ {datetime.now().strftime('%H:%M:%S')}"
+                )
+            else:
+                pyperclip.copy(current)
+                if hasattr(self, '_worker'):
+                    self._worker.update_last(current)
+                self._log(f"  ✓ {len(current)} chars written to clipboard", "ok")
+                self._set_status(
+                    f"OK [{chain_label}] @ {datetime.now().strftime('%H:%M:%S')}"
+                )
+
+            self.transform_count += 1
+            self._update_stats()
+
+        finally:
+            self._set_busy(False, chain_label)
 
     # ── Polling ───────────────────────────────────────────────────────────────
 

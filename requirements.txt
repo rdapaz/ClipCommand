@@ -28,4 +28,4 @@ python-dateutil>=2.9.0.post0
 
 # Anthropic API — required for AI-powered transforms (e.g. aidinsight_email_reply)
 # Requires ANTHROPIC_API_KEY environment variable to be set
-# anthropic>=0.25.0
+anthropic>=0.25.0

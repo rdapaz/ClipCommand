@@ -22,12 +22,15 @@ Requirements:
 
 import os
 import subprocess
+import time
 import yaml
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-MODEL        = "claude-opus-4-6"
+MODEL        = "claude-sonnet-4-6"
 MAX_TOKENS   = 2048
+MAX_RETRIES  = 3
+RETRY_DELAY  = 3   # seconds, multiplied by attempt number (3s, 6s)
 SITE_URL     = "https://aidinsight.com.au"
 COURSES_URL  = "https://aidinsight.com.au/courses/"
 
@@ -53,22 +56,20 @@ Key facts:
 - Public courses held at Kardinya Lesser Hall, Morris Buzzacott Reserve, 51 Williamson Road
 
 Tone: warm, professional, clinically credible, encouraging. Not overly corporate.
-Always sign off from the AidInsight team, not as an individual.
+Always sign off as: The AidInsight Team
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fetch_site_text(url: str, max_chars: int = 3000) -> str:
-    """Fetch a URL via curl and return plain text (best effort)."""
+    """Fetch a URL via curl and return stripped plain text (best effort)."""
     try:
         result = subprocess.run(
             ["curl", "-s", "--max-time", "10", "-L", url],
             capture_output=True, text=True, timeout=15
         )
-        raw = result.stdout
-        # Very basic HTML strip — remove tags
         import re
-        text = re.sub(r"<[^>]+>", " ", raw)
+        text = re.sub(r"<[^>]+>", " ", result.stdout)
         text = re.sub(r"\s+", " ", text).strip()
         return text[:max_chars]
     except Exception as exc:
@@ -79,21 +80,23 @@ def transform(text: str) -> str:
     try:
         import anthropic
     except ImportError:
-        return _yaml_error("anthropic package not installed. Run: pip install anthropic")
+        return _yaml_error(
+            "anthropic package not installed.\n"
+            "Run: pip install anthropic"
+        )
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         return _yaml_error(
-            "ANTHROPIC_API_KEY environment variable not set.\n"
-            "Export it before launching ClipCommand:\n"
-            "  export ANTHROPIC_API_KEY=sk-ant-..."
+            "Anthropic API key not set.\n"
+            "Click ⚙ Settings in ClipCommand to enter your API key."
         )
 
     email_prompt = text.strip()
     if not email_prompt:
         return _yaml_error("Clipboard is empty — paste the inbound email first.")
 
-    # Fetch live site content for course details
+    # Fetch live site content
     site_text    = _fetch_site_text(SITE_URL)
     courses_text = _fetch_site_text(COURSES_URL)
 
@@ -120,34 +123,58 @@ Draft a warm, professional email reply to the inbound enquiry provided by the us
 
 Return ONLY the email body text — no subject line, no markdown formatting."""
 
-    user_message = f"Please reply to this inbound training enquiry:\n\n{email_prompt}"
+    user_message = (
+        f"Please reply to this inbound training enquiry:\n\n{email_prompt}"
+    )
 
-    try:
-        client   = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model      = MODEL,
-            max_tokens = MAX_TOKENS,
-            system     = system_prompt,
-            messages   = [{"role": "user", "content": user_message}]
-        )
-        reply = response.content[0].text.strip()
-    except Exception as exc:
-        return _yaml_error(f"Anthropic API error: {exc}")
+    # ── API call with retry on overload ──────────────────────────────────────
+    client   = anthropic.Anthropic(api_key=api_key)
+    reply    = None
+    last_exc = None
 
-    # Build context for follow-up questions
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = client.messages.create(
+                model      = MODEL,
+                max_tokens = MAX_TOKENS,
+                system     = system_prompt,
+                messages   = [{"role": "user", "content": user_message}]
+            )
+            reply = response.content[0].text.strip()
+            break  # success — exit retry loop
+
+        except Exception as exc:
+            last_exc = exc
+            is_overload = "529" in str(exc) or "overloaded" in str(exc).lower()
+
+            if is_overload and attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY * attempt)  # 3s then 6s
+                continue
+            elif is_overload:
+                return _yaml_error(
+                    f"Anthropic API overloaded after {MAX_RETRIES} attempts. "
+                    f"Try again in a moment.\nLast error: {exc}"
+                )
+            else:
+                return _yaml_error(f"Anthropic API error: {exc}")
+
+    if reply is None:
+        return _yaml_error(f"No response received. Last error: {last_exc}")
+
+    # ── Build context for follow-up questions ─────────────────────────────────
     context_block = (
         f"=== ORIGINAL ENQUIRY ===\n{email_prompt}\n\n"
         f"=== AIDINSIGHT RESPONSE ===\n{reply}\n\n"
         f"=== BUSINESS CONTEXT ===\n{BUSINESS_CONTEXT.strip()}"
     )
 
-    # Serialise to YAML
+    # ── Serialise to YAML ─────────────────────────────────────────────────────
     try:
         output = yaml.dump(
             {"response": reply, "context": context_block},
-            default_flow_style=False,
-            allow_unicode=True,
-            width=10000,   # prevent line wrapping inside values
+            default_flow_style = False,
+            allow_unicode       = True,
+            width               = 10000,  # prevent mid-value line wrapping
         )
         return output.strip()
     except Exception as exc:
@@ -155,9 +182,9 @@ Return ONLY the email body text — no subject line, no markdown formatting."""
 
 
 def _yaml_error(message: str) -> str:
-    """Return a valid YAML error payload."""
+    """Return a valid YAML error payload so downstream transforms don't break."""
     return yaml.dump(
         {"response": f"[aidinsight_email_reply error]\n{message}", "context": ""},
-        default_flow_style=False,
-        allow_unicode=True,
+        default_flow_style = False,
+        allow_unicode       = True,
     ).strip()
