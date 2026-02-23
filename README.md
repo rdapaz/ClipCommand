@@ -19,32 +19,39 @@ restart required.
 - **Live rescan** — drop a new script into the folder and hit *Rescan* to pick
   it up immediately
 - **Hot-reload** — edit the active script and reload it without changing selection
+- **Chain builder** — wire multiple transforms into a pipeline with `[+]` / `[−]`
+  buttons; save chains to `transforms.ini` for instant recall
 - **Docstring descriptions** — the script's module docstring shows as a tooltip
   and description strip so you always know what's active
-- **Dark-themed Tkinter UI** with colour-coded activity log, pause/resume, and
-  a stats bar
-- 16 ready-to-use example transforms included
+- **Dry run mode** — preview transform output before it hits the clipboard;
+  status dot turns orange as a reminder
+- **SQLite activity log** — every event stored in `clipcommand.db` with full
+  message content; browse via the **📋 Log** button, filter by session and tag,
+  click any row to see the complete message
+- **Native PySide6 UI** — dark-themed, colour-coded log, works correctly on
+  macOS, Windows, and Linux
+- 29+ ready-to-use example transforms included
 
 ---
 
 ## Screenshot
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ ● ClipCommand  [polling every 0.5s]       ⟳ Reload  ⏸ Pause│
-├─────────────────────────────────────────────────────────────┤
-│ Transform: [Json Pretty          ▾]  ⟳ Rescan folder        │
-│ Pretty-print / minify JSON                                   │
-├─────────────────────────────────────────────────────────────┤
-│ Transforms: 3  |  Errors: 0  |  Active: json_pretty         │
-├─────────────────────────────────────────────────────────────┤
-│ [14:22:01] Scanned './transforms': 16 OK                    │
-│ [14:22:01] Active transform: Json Pretty                    │
-│ [14:22:04] ▶ [Json Pretty] via clipboard change             │
-│ [14:22:04]   In:  '{"name":"Ric","role":"OT engineer"}'     │
-│ [14:22:04]   Out: '{\n  "name": "Ric",\n  "role": …'       │
-│ [14:22:04]   ✓ 38 chars written to clipboard                │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ ● ClipCommand  [polling every 0.5s]    ⟳ Reload  ⏸ Pause 📋 Log│
+├─────────────────────────────────────────────────────────────────┤
+│ Transform: [Json Pretty          ▾]  ⟳ Rescan   ⛓ Load chain…  │
+│ Pretty-print / minify JSON                                       │
+├─────────────────────────────────────────────────────────────────┤
+│ Transforms: 3  |  Errors: 0  |  Chain: json_pretty              │
+├─────────────────────────────────────────────────────────────────┤
+│ [14:22:01] Scanned './transforms': 29 OK                        │
+│ [14:22:01] Active transform: Json Pretty                        │
+│ [14:22:04] ▶ [Json Pretty] via clipboard change                 │
+│ [14:22:04]   In:  '{"name":"Ric","role":"OT engineer"}'         │
+│ [14:22:04]   Out: '{\n  "name": "Ric",\n  "role": …'           │
+│ [14:22:04]   ✓ 38 chars written to clipboard                    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -52,9 +59,11 @@ restart required.
 ## Requirements
 
 - Python 3.10+
+- `PySide6` (UI framework)
 - `pyperclip` (clipboard access)
-- `tkinter` (usually bundled with Python; on Linux: `sudo apt install python3-tk`)
+- `pyyaml` (YAML transform support)
 - `keyboard` *(optional — hotkey mode only)*
+- `python-docx` *(optional — Word table transforms on macOS / Linux)*
 
 ---
 
@@ -69,9 +78,6 @@ python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 pip install -r requirements.txt
-
-# Generate the example transforms folder
-python make_transforms.py
 ```
 
 ---
@@ -148,94 +154,22 @@ def transform(text: str) -> str:
 
 ---
 
-## Included transforms
-
-Run `python make_transforms.py` to generate these into `./transforms/`:
-
-| Script | What it does |
-|---|---|
-| `trim_whitespace.py` | Strip trailing spaces, normalise blank lines |
-| `upper.py` | Convert to UPPERCASE |
-| `lower.py` | Convert to lowercase |
-| `title_case.py` | Convert To Title Case |
-| `base64_encode.py` | Base64-encode the text |
-| `base64_decode.py` | Base64-decode the text |
-| `url_encode.py` | Percent-encode for URLs |
-| `url_decode.py` | Decode percent-encoded URLs |
-| `json_pretty.py` | Pretty-print JSON (2-space indent) |
-| `json_minify.py` | Minify JSON |
-| `strip_ansi.py` | Remove ANSI colour codes from terminal output |
-| `csv_to_markdown.py` | Convert a CSV snippet to a Markdown table |
-| `line_sort.py` | Sort lines alphabetically, deduplicate |
-| `hex_dump.py` | Produce a hex dump of the clipboard text |
-| `ot_ip_extract.py` | Extract all IP addresses (one per line) |
-| `iec62443_slugify.py` | Normalise asset descriptions to an IEC 62443-style slug |
-
----
-
-## Platform notes
-
-### Windows
-Works out of the box. For hotkey mode, run the terminal as Administrator or the
-`keyboard` package may not capture global keypresses.
-
-### macOS
-`pyperclip` uses `pbcopy`/`pbpaste` which are built in. Hotkey mode requires
-Accessibility permissions for the terminal app
-(*System Settings → Privacy & Security → Accessibility*).
-
-### Linux
-```bash
-# tkinter
-sudo apt install python3-tk   # Debian/Ubuntu
-sudo dnf install python3-tkinter  # Fedora
-
-# pyperclip needs xclip or xsel (X11) or wl-clipboard (Wayland)
-sudo apt install xclip
-# or
-sudo apt install wl-clipboard
-
-# keyboard (hotkey mode) needs uinput access
-sudo usermod -aG input $USER   # then log out and back in
-```
-
----
-
-## Project structure
-
-```
-clipcommand/
-├── clipcommand.py        # Main application
-├── make_transforms.py    # Generates the example transforms/ folder
-├── transforms/           # Drop your .py transform scripts here
-│   ├── transforms.ini    # Chain definitions and per-transform config overrides
-│   ├── json_pretty.py
-│   ├── upper.py
-│   └── ...
-├── requirements.txt
-├── CHANGELOG.md
-├── CONTRIBUTING.md
-├── LICENSE
-└── README.md
-```
-
----
-
-
 ## Chaining transforms
 
 Build a multi-step pipeline using the `[+]` and `[−]` buttons in the UI. Each
 step feeds its output as the next step's input. The stats bar shows the full
 chain: `trim_whitespace → csv_to_markdown → word_from_yaml_active`.
 
-Save a chain in `transforms/transforms.ini` and it will appear in the first
-dropdown prefixed with `⛓`:
+Save a chain in `transforms/transforms.ini` and load it instantly via the
+**⛓ Load chain…** button:
 
 ```ini
 [chain:firewall_review]
 description = Extract IPs, sort, insert into Word
 steps       = ot_ip_extract, line_sort, word_from_yaml_active
 ```
+
+---
 
 ## Per-transform configuration
 
@@ -250,6 +184,8 @@ heading_rows = 1
 
 Values are auto-coerced to `int` or `float` where possible.
 
+---
+
 ## Dry run mode
 
 Click **🔍 Dry Run** to send the final pipeline output to a preview pane
@@ -257,6 +193,116 @@ instead of the clipboard. The status dot turns orange as a reminder.
 The preview pane has **Copy to clipboard** and **Clear** buttons.
 
 ---
+
+## Activity log
+
+All events are stored in `clipcommand.db` (SQLite, project root). Click
+**📋 Log** to open the log browser:
+
+- Filter by session or tag (`err`, `warn`, `ok`, `info`, `chain`)
+- Click any row to see the **full message** in the detail pane — no truncation
+- Auto-refreshes every 2 seconds while open
+- Entries older than 30 days are purged automatically
+
+The log browser is particularly useful for debugging transform errors where
+the main window only shows a truncated preview.
+
+---
+
+## Word table transforms (`_word_utils.py`)
+
+`_word_utils.py` provides a cross-platform `update_table()` helper for writing
+data into a bookmarked Word table. Used by `word_from_yaml_active.py` and
+similar transforms.
+
+### Platform behaviour
+
+| Platform | Method | Requires |
+|---|---|---|
+| Windows | win32com COM automation | Word open with active document |
+| macOS | python-docx (file on disk) | `DOC_PATH` set; file saved and closed in Word |
+| Linux | python-docx (file on disk) | `DOC_PATH` set; file saved and closed in Word |
+
+### macOS / Linux workflow
+
+1. Save your document in Word (File → Save)
+2. Close it in Word
+3. Set `DOC_PATH` in the transform config to the full `.docx` path
+4. Run the transform — it writes the data and saves the file
+5. Reopen the file in Word to see the changes
+
+> **Note:** JXA and AppleScript automation of Word table cells is unreliable
+> on current versions of Word for Mac — cell write operations are silently
+> ignored regardless of API used. python-docx on a saved file is the only
+> reliable approach on non-Windows platforms.
+
+### transforms.ini example
+
+```ini
+[transform:word_from_yaml_active]
+bookmark     = bk1
+heading_rows = 1
+doc_path     = /Users/yourname/Documents/MyReport.docx
+```
+
+---
+
+## Project structure
+
+```
+clipcommand/
+├── clipcommand.py        # Main application (PySide6)
+├── db_logger.py          # SQLite logging backend
+├── log_browser.py        # Log browser dialog
+├── clipcommand.db        # SQLite activity log (auto-created, gitignored)
+├── transforms/           # Drop your .py transform scripts here
+│   ├── transforms.ini    # Chain definitions and per-transform config overrides
+│   ├── _word_utils.py    # Cross-platform Word table helper
+│   ├── word_from_yaml_active.py
+│   ├── json_pretty.py
+│   ├── upper.py
+│   └── ...
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## Platform notes
+
+### Windows
+
+Works out of the box. For hotkey mode, run the terminal as Administrator or the
+`keyboard` package may not capture global keypresses.
+
+For Word table transforms, win32com is used automatically — no configuration
+needed beyond having a document open with the correct bookmark.
+
+### macOS
+
+`pyperclip` uses `pbcopy`/`pbpaste` which are built in. Hotkey mode requires
+Accessibility permissions for the terminal app
+(*System Settings → Privacy & Security → Accessibility*).
+
+For Word table transforms, set `DOC_PATH` in `transforms.ini` — see above.
+
+### Linux
+
+```bash
+# PySide6
+pip install PySide6
+
+# pyperclip needs xclip or xsel (X11) or wl-clipboard (Wayland)
+sudo apt install xclip
+# or
+sudo apt install wl-clipboard
+
+# keyboard (hotkey mode) needs uinput access
+sudo usermod -aG input $USER   # then log out and back in
+```
+
+---
+
 ## Acknowledgements
 
 Inspired by the Perl Monks community and the original

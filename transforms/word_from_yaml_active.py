@@ -18,7 +18,7 @@ transforms/ folder. On Linux, set DOC_PATH to your .docx file path.
 
 BOOKMARK     = "bk1"
 HEADING_ROWS = 1
-DOC_PATH     = ""   # Linux only — leave blank on Windows / macOS
+DOC_PATH     = "/Users/ricdeez/Desktop/Doc1.docx"   # Linux only — leave blank on Windows / macOS
 
 # ─────────────────────────────────────────────────────────────────────────────
 
