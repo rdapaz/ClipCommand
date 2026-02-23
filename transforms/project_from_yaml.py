@@ -35,7 +35,7 @@ Configure MPP_PATH below to point at your .mpp file (local or SharePoint URL).
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 MPP_PATH = (
-    r".\MySchedule.mpp"
+    r"https://woodsideenergy-my.sharepoint.com/personal/ricardo_dapaz_woodside_com/Documents/Documents/__Dev__/PyCharmProjects/ClipCommand/transforms/MySchedule.mpp"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
