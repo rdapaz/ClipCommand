@@ -2,16 +2,17 @@
 # Cross-platform clipboard access (required)
 pyperclip>=1.8.2
 
+# UI framework (required) — replaces tkinter, native rendering on all platforms
+PySide6>=6.6.0
+
 # ── Word transform dependencies ───────────────────────────────────────────────
 
 # Windows: COM automation for live Word document access
 # (also provides win32com used by _word_utils.py on Windows)
 pywin32>=311; sys_platform == "win32"
 
-# macOS: no extra packages needed — _word_utils.py uses osascript (built-in)
-
-# Linux / cross-platform file-based fallback
-# Also useful on macOS/Windows if you prefer editing files directly
+# macOS / Linux: file-based Word table writing via python-docx
+# Requires the document to be saved and closed in Word before running
 python-docx>=1.1.0
 
 # YAML parsing — required for word_from_yaml* transforms
@@ -24,3 +25,7 @@ python-dateutil>=2.9.0.post0
 # Hotkey support (--hotkey flag)
 # Linux note: also requires sudo or uinput group membership
 # keyboard>=0.13.5
+
+# Anthropic API — required for AI-powered transforms (e.g. aidinsight_email_reply)
+# Requires ANTHROPIC_API_KEY environment variable to be set
+# anthropic>=0.25.0
