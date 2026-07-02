@@ -68,34 +68,40 @@ except ImportError:
 
 from db_logger import DBLogger
 from log_browser import LogBrowserDialog
+from transform_editor import TransformEditorDialog
 
 
-# ── Colours ───────────────────────────────────────────────────────────────────
+# ── Colours (pyside6-ux design system) ─────────────────────────────────────────
 C = {
-    "bg_dark":   "#1e2127",
-    "bg_mid":    "#282a36",
-    "bg_input":  "#44475a",
-    "bg_log":    "#21222c",
-    "fg":        "#f8f8f2",
-    "fg_dim":    "#6272a4",
-    "fg_accent": "#8be9fd",
-    "fg_purple": "#bd93f9",
-    "fg_yellow": "#f1fa8c",
-    "ok":        "#50fa7b",
-    "err":       "#ff5555",
-    "warn":      "#ffb86c",
-    "dry":       "#ffb86c",
-    "chain":     "#bd93f9",
+    "bg_dark":   "#1F3864",   # NAVY — headings, primary buttons
+    "bg_mid":    "#FFFFFF",   # BG_CARD — panel/card surfaces
+    "bg_input":  "#1F3864",   # NAVY — default button fill
+    "bg_log":    "#FFFFFF",   # BG_CARD — log surface
+    "bg_main":   "#F5F6FA",   # BG_MAIN — page background
+    "fg":        "#1A1A2E",   # TEXT_PRIMARY
+    "fg_dim":    "#6B7280",   # TEXT_SECONDARY
+    "fg_accent": "#4E79A7",   # ACCENT
+    "fg_purple": "#4E79A7",   # ACCENT (chain highlight, no purple in palette)
+    "fg_yellow": "#F59E0B",   # WARNING
+    "ok":        "#22C55E",   # POSITIVE
+    "err":       "#EF4444",   # NEGATIVE
+    "warn":      "#F59E0B",   # WARNING
+    "dry":       "#F59E0B",   # WARNING
+    "chain":     "#4E79A7",   # ACCENT
+    "border":    "#E5E7EB",   # BORDER
 }
 
+# Darker, text-safe variants of the semantic colours for use as small text on
+# light backgrounds — the bright button/dot colours in C don't meet contrast
+# requirements when used as foreground text on white/near-white surfaces.
 TAG_COLOURS = {
-    "ts":      C["fg_dim"],
-    "ok":      C["ok"],
-    "err":     C["err"],
-    "info":    C["fg_accent"],
-    "warn":    C["warn"],
-    "preview": C["fg_purple"],
-    "chain":   C["chain"],
+    "ts":      C["fg_dim"],    # #6B7280 already AA-safe on light bg
+    "ok":      "#15803D",      # darker POSITIVE
+    "err":     "#B91C1C",      # darker NEGATIVE
+    "info":    "#2C5282",      # darker ACCENT
+    "warn":    "#B45309",      # darker WARNING
+    "preview": "#2C5282",      # darker ACCENT
+    "chain":   "#2C5282",      # darker ACCENT
 }
 
 
@@ -107,12 +113,17 @@ TAG_COLOURS = {
 
 import configparser as _configparser
 
+def _app_root() -> Path:
+    """Directory the app runs from — the exe's folder when frozen (PyInstaller),
+    otherwise clipcommand.py's folder. __file__ is unreliable once bundled."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+
 def _config_path() -> Path:
     """config.ini lives next to the executable (or clipcommand.py in dev)."""
-    if getattr(sys, "frozen", False):
-        # Running as PyInstaller bundle
-        return Path(sys.executable).parent / "config.ini"
-    return Path(__file__).parent / "config.ini"
+    return _app_root() / "config.ini"
 
 
 def load_config() -> _configparser.ConfigParser:
@@ -151,101 +162,127 @@ def ensure_api_key() -> str:
 
 def build_stylesheet() -> str:
     return f"""
-    QMainWindow, QWidget {{
-        background-color: {C["bg_dark"]};
+    QMainWindow, QDialog, QWidget {{
+        background-color: {C["bg_main"]};
         color: {C["fg"]};
-        font-family: "Menlo", "Courier New", monospace;
-        font-size: 12px;
+        font-family: "Segoe UI";
+        font-size: 10pt;
     }}
     QPushButton {{
-        background-color: {C["bg_input"]};
-        color: {C["fg"]};
+        background-color: {C["bg_dark"]};
+        color: white;
         border: none;
-        border-radius: 4px;
-        padding: 5px 10px;
-        font-size: 12px;
+        border-radius: 6px;
+        padding: 6px 14px;
+        font-size: 10pt;
+        font-weight: 600;
     }}
     QPushButton:hover {{
-        background-color: #6272a4;
+        background-color: #2B4A8C;
     }}
     QPushButton:pressed {{
-        background-color: #4a5580;
+        background-color: #16294A;
+    }}
+    QPushButton:disabled {{
+        background-color: #9CA3AF;
     }}
     QPushButton#dryrun_active {{
-        background-color: #6d4c00;
-        color: {C["warn"]};
+        background-color: {C["warn"]};
+        color: white;
     }}
     QPushButton#add_btn {{
-        color: {C["ok"]};
+        background-color: {C["ok"]};
+        color: white;
         font-weight: bold;
-        padding: 3px 8px;
+        padding: 3px 10px;
+        border-radius: 6px;
     }}
     QPushButton#del_btn {{
-        color: {C["err"]};
+        background-color: {C["err"]};
+        color: white;
         font-weight: bold;
-        padding: 3px 8px;
+        padding: 3px 10px;
+        border-radius: 6px;
     }}
     QPushButton#del_btn:disabled {{
-        color: {C["fg_dim"]};
+        background-color: #9CA3AF;
     }}
     QComboBox {{
-        background-color: {C["bg_input"]};
+        background-color: white;
         color: {C["fg"]};
-        border: 1px solid {C["fg_dim"]};
-        border-radius: 4px;
-        padding: 3px 8px;
+        border: 1px solid {C["border"]};
+        border-radius: 6px;
+        padding: 5px 10px;
         min-width: 220px;
-        font-size: 12px;
+        font-size: 10pt;
     }}
-    QComboBox:hover {{
-        border-color: {C["fg_accent"]};
+    QComboBox:hover, QComboBox:focus {{
+        border-color: {C["bg_dark"]};
     }}
     QComboBox::drop-down {{
         border: none;
-        width: 20px;
+        width: 22px;
     }}
     QComboBox::down-arrow {{
         width: 10px;
         height: 10px;
     }}
     QComboBox QAbstractItemView {{
-        background-color: {C["bg_input"]};
+        background-color: white;
         color: {C["fg"]};
-        selection-background-color: #6272a4;
-        border: 1px solid {C["fg_dim"]};
+        selection-background-color: #E8EDF5;
+        selection-color: {C["bg_dark"]};
+        border: 1px solid {C["border"]};
+        padding: 4px;
+    }}
+    QLineEdit {{
+        background-color: white;
+        color: {C["fg"]};
+        border: 1px solid {C["border"]};
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 10pt;
+    }}
+    QLineEdit:focus {{
+        border-color: {C["bg_dark"]};
+    }}
+    QCheckBox {{
+        color: {C["fg_dim"]};
     }}
     QTextEdit {{
         background-color: {C["bg_log"]};
         color: {C["fg"]};
-        border: none;
-        font-family: "Menlo", "Courier New", monospace;
-        font-size: 11px;
+        border: 1px solid {C["border"]};
+        border-radius: 8px;
+        font-family: "Cascadia Code", "Consolas", monospace;
+        font-size: 9pt;
     }}
     QTextEdit#preview_text {{
-        background-color: #1a1b26;
-        color: {C["ok"]};
+        background-color: #F9FAFB;
+        color: {C["fg"]};
+        border: 1px solid {C["border"]};
     }}
     QLabel#status_dot_ok  {{ color: {C["ok"]};  font-size: 16px; }}
     QLabel#status_dot_err {{ color: {C["err"]}; font-size: 16px; }}
     QLabel#status_dot_dry {{ color: {C["dry"]}; font-size: 16px; }}
-    QLabel#title_label    {{ color: {C["fg"]};  font-size: 13px; font-weight: bold; }}
-    QLabel#mode_label     {{ color: {C["fg_accent"]}; font-size: 11px; }}
-    QLabel#step_label     {{ color: {C["fg_dim"]}; font-size: 11px; }}
-    QLabel#stats_label    {{ color: {C["fg_dim"]}; font-size: 10px; padding: 2px 8px; }}
-    QLabel#statusbar      {{ color: {C["fg_dim"]}; font-size: 10px; padding: 2px 6px;
-                             background-color: {C["bg_dark"]}; }}
-    QLabel#preview_header {{ color: {C["dry"]}; font-size: 11px; font-weight: bold; }}
-    QFrame#chain_panel    {{ background-color: {C["bg_mid"]}; }}
-    QFrame#stats_bar      {{ background-color: {C["bg_mid"]}; }}
-    QFrame#preview_frame  {{ background-color: {C["bg_dark"]}; }}
-    QFrame#separator      {{ color: {C["fg_dim"]}; }}
+    QLabel#title_label    {{ color: {C["bg_dark"]}; font-size: 13pt; font-weight: 600; }}
+    QLabel#mode_label     {{ color: {C["fg_accent"]}; font-size: 9pt; }}
+    QLabel#step_label     {{ color: {C["fg_dim"]}; font-size: 9pt; }}
+    QLabel#stats_label    {{ color: {C["fg_dim"]}; font-size: 9pt; padding: 2px 8px; }}
+    QLabel#statusbar      {{ color: {C["fg_dim"]}; font-size: 9pt; padding: 4px 10px;
+                             background-color: {C["bg_main"]}; border-top: 1px solid {C["border"]}; }}
+    QLabel#preview_header {{ color: #B45309; font-size: 10pt; font-weight: 600; }}
+    QFrame#chain_panel    {{ background-color: {C["bg_mid"]}; border: 1px solid {C["border"]}; border-radius: 10px; }}
+    QFrame#stats_bar      {{ background-color: transparent; border: none; }}
+    QFrame#preview_frame  {{ background-color: {C["bg_mid"]}; border: 1px solid {C["border"]}; border-radius: 10px; }}
+    QFrame#separator      {{ color: {C["border"]}; }}
     QScrollBar:vertical {{
-        background: {C["bg_dark"]};
-        width: 8px;
+        background: {C["bg_main"]};
+        width: 10px;
     }}
     QScrollBar::handle:vertical {{
-        background: {C["bg_input"]};
-        border-radius: 4px;
+        background: #C9CED8;
+        border-radius: 5px;
         min-height: 20px;
     }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
@@ -254,17 +291,87 @@ def build_stylesheet() -> str:
 
 # ─── INI loader ───────────────────────────────────────────────────────────────
 
-def load_ini(folder: str) -> configparser.ConfigParser:
-    cfg = configparser.ConfigParser()
-    candidates = [
+def _ini_candidates(folder: str) -> list:
+    return [
         Path(folder) / "transforms.ini",
         Path(folder).parent / "transforms.ini",
     ]
-    for ini_path in candidates:
+
+
+def resolve_ini_path(folder: str) -> Path:
+    """Path of the transforms.ini in use (first that exists, else the default
+    location alongside the transforms folder for a freshly-created one)."""
+    candidates = _ini_candidates(folder)
+    for p in candidates:
+        if p.exists():
+            return p
+    return candidates[0]
+
+
+def load_ini(folder: str) -> configparser.ConfigParser:
+    cfg = configparser.ConfigParser()
+    for ini_path in _ini_candidates(folder):
         if ini_path.exists():
             cfg.read(ini_path, encoding="utf-8-sig")
             break
     return cfg
+
+
+def upsert_chain(folder: str, name: str, description: str, steps: list) -> Path:
+    """Write (or replace) a [chain:name] section in transforms.ini using a
+    text-based edit so existing comments and formatting are preserved."""
+    ini_path = resolve_ini_path(folder)
+    header = f"[chain:{name}]"
+    block_lines = [header]
+    if description:
+        block_lines.append(f"description = {description}")
+    block_lines.append(f"steps       = {', '.join(steps)}")
+    block = "\n".join(block_lines)
+
+    text = ini_path.read_text(encoding="utf-8-sig") if ini_path.exists() else ""
+    lines = text.splitlines()
+
+    # Locate an existing section with this exact header
+    start = next((i for i, ln in enumerate(lines)
+                  if ln.strip() == header), None)
+    if start is not None:
+        # Section runs until the next "[section]" line or EOF
+        end = len(lines)
+        for j in range(start + 1, len(lines)):
+            if lines[j].lstrip().startswith("["):
+                end = j
+                break
+        new_lines = lines[:start] + block.splitlines() + lines[end:]
+        new_text = "\n".join(new_lines).rstrip() + "\n"
+    else:
+        sep = "" if text.endswith("\n\n") or not text else \
+              ("\n" if text.endswith("\n") else "\n\n")
+        new_text = text + sep + "\n" + block + "\n"
+
+    ini_path.write_text(new_text, encoding="utf-8")
+    return ini_path
+
+
+def delete_chain(folder: str, name: str) -> bool:
+    """Remove a [chain:name] section from transforms.ini (text-based so other
+    sections and comments are untouched). Returns True if a section was removed."""
+    ini_path = resolve_ini_path(folder)
+    if not ini_path.exists():
+        return False
+    header = f"[chain:{name}]"
+    lines = ini_path.read_text(encoding="utf-8-sig").splitlines()
+    start = next((i for i, ln in enumerate(lines) if ln.strip() == header), None)
+    if start is None:
+        return False
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].lstrip().startswith("["):
+            end = j
+            break
+    del lines[start:end]
+    new_text = "\n".join(lines).rstrip() + "\n"
+    ini_path.write_text(new_text, encoding="utf-8")
+    return True
 
 
 def get_transform_overrides(cfg, stem: str) -> dict:
@@ -351,6 +458,33 @@ def scan_transforms(folder: str, cfg) -> list:
 
 # ─── Clipboard worker ─────────────────────────────────────────────────────────
 
+def clip_write(text: str, retries: int = 6, delay: float = 0.04) -> None:
+    """pyperclip.copy with retries. On Windows the clipboard is an exclusive
+    resource; another app briefly holding it makes OpenClipboard fail. A short
+    retry loop rides out that contention instead of dropping the write."""
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            pyperclip.copy(text)
+            return
+        except Exception as exc:      # PyperclipWindowsException et al.
+            last_exc = exc
+            time.sleep(delay)
+    raise last_exc if last_exc else RuntimeError("clipboard write failed")
+
+
+def clip_read(retries: int = 3, delay: float = 0.04) -> str:
+    """pyperclip.paste with a couple of retries for transient clipboard locks."""
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return pyperclip.paste()
+        except Exception as exc:
+            last_exc = exc
+            time.sleep(delay)
+    raise last_exc if last_exc else RuntimeError("clipboard read failed")
+
+
 class ClipboardWorker(QObject):
     """Runs clipboard polling in a QThread, emits signal on change."""
     clip_changed = Signal(str)
@@ -364,7 +498,7 @@ class ClipboardWorker(QObject):
 
     def reseed(self):
         try:
-            self._last = pyperclip.paste()
+            self._last = clip_read()
         except Exception:
             pass
 
@@ -383,9 +517,13 @@ class ClipboardWorker(QObject):
         while self._running:
             if self._active and not self._busy:
                 try:
-                    current = pyperclip.paste()
+                    current = clip_read()
                     if current and current != self._last:
                         self._last = current
+                        # Block further polling until _run_chain (GUI thread)
+                        # finishes and releases busy — prevents the transform's
+                        # own write-back from being re-detected as a new change.
+                        self._busy = True
                         self.clip_changed.emit(current)
                 except Exception:
                     pass
@@ -404,10 +542,13 @@ class ChainRow(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(f"background-color: {C['bg_mid']};")
+        # Scoped selector so the row's white background does NOT bleed into its
+        # child QComboBox / +/- buttons (which have their own styling).
+        self.setObjectName("chain_row")
+        self.setStyleSheet(f"#chain_row {{ background-color: {C['bg_mid']}; border: none; }}")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setContentsMargins(0, 2, 0, 2)
         layout.setSpacing(6)
 
         self.step_label = QLabel("Step 1:")
@@ -418,12 +559,16 @@ class ChainRow(QWidget):
 
         self.combo = QComboBox()
         self.combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.combo.currentTextChanged.connect(self.changed.emit)
+        # currentTextChanged passes a str; `changed` is a no-arg signal, so drop
+        # the argument (connecting .emit directly raises TypeError and the
+        # change is never propagated).
+        self.combo.currentTextChanged.connect(lambda _=None: self.changed.emit())
         layout.addWidget(self.combo)
 
         self.add_btn = QPushButton("+")
         self.add_btn.setObjectName("add_btn")
         self.add_btn.setFixedWidth(28)
+        self.add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_btn.setToolTip("Insert step after this one")
         self.add_btn.clicked.connect(lambda: self.add_after.emit(self))
         layout.addWidget(self.add_btn)
@@ -431,6 +576,7 @@ class ChainRow(QWidget):
         self.del_btn = QPushButton("−")
         self.del_btn.setObjectName("del_btn")
         self.del_btn.setFixedWidth(28)
+        self.del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.del_btn.setToolTip("Remove this step")
         self.del_btn.clicked.connect(lambda: self.remove.emit(self))
         layout.addWidget(self.del_btn)
@@ -466,7 +612,9 @@ class ChainRow(QWidget):
 
 class ClipCommandWindow(QMainWindow):
     MAX_LOG_LINES = 300
-    _log_signal   = Signal(str, str)   # message, tag
+    _log_signal   = Signal(str, str)        # message, tag
+    _run_signal   = Signal(str, str)        # clip_text, source — marshals chain
+                                            # execution onto the GUI thread
 
     def __init__(self, transforms_folder: str, initial_script,
                  poll_interval: float, hotkey):
@@ -483,15 +631,23 @@ class ClipCommandWindow(QMainWindow):
         self._registry: list   = []
         self._rows: list       = []
         self._log_browser      = None
+        self._editor           = None
+        # Name/description of the most recently loaded chain — pre-fills the
+        # "Save as chain" dialog so an edit-and-resave updates it in place.
+        self._loaded_chain_name = ""
+        self._loaded_chain_desc = ""
 
-        # SQLite logger — DB lives next to clipcommand.py
-        project_root = str(Path(__file__).parent)
-        self._db = DBLogger(project_root)
+        # SQLite logger — DB lives next to the executable (or clipcommand.py in dev)
+        self._db = DBLogger(str(_app_root()))
 
         # Load API key from config.ini if not already in environment
         ensure_api_key()
 
         self._log_signal.connect(self._write_log)
+        # Bound-method slot on this main-thread QObject → a queued connection
+        # when emitted from the poll/hotkey threads, so _run_chain (and all its
+        # GUI calls) always executes on the GUI thread.
+        self._run_signal.connect(self._run_chain)
 
         self._build_ui()
         self._refresh_transforms(preselect=initial_script)
@@ -513,10 +669,15 @@ class ClipCommandWindow(QMainWindow):
         main_layout.setSpacing(0)
 
         # ── Header ────────────────────────────────────────────────────────────
+        # NOTE: container backgrounds MUST use a scoped #objectName selector.
+        # A bare "background-color: X" bleeds into child buttons/combos and
+        # overrides their own navy/white styling (Qt stylesheet inheritance).
         header = QWidget()
-        header.setStyleSheet(f"background-color: {C['bg_dark']}; padding: 4px;")
+        header.setObjectName("app_header")
+        header.setStyleSheet(f"#app_header {{ background-color: {C['bg_main']}; }}")
         h_layout = QHBoxLayout(header)
-        h_layout.setContentsMargins(8, 6, 8, 6)
+        h_layout.setContentsMargins(16, 14, 16, 10)
+        h_layout.setSpacing(8)
 
         self.status_dot = QLabel("●")
         self.status_dot.setObjectName("status_dot_err")
@@ -536,6 +697,10 @@ class ClipCommandWindow(QMainWindow):
         self.dryrun_btn.clicked.connect(self._toggle_dry_run)
         h_layout.addWidget(self.dryrun_btn)
 
+        edit_btn = QPushButton("✎ Transforms")
+        edit_btn.clicked.connect(self._open_transform_editor)
+        h_layout.addWidget(edit_btn)
+
         log_btn = QPushButton("📋 Log")
         log_btn.clicked.connect(self._open_log_browser)
         h_layout.addWidget(log_btn)
@@ -552,67 +717,93 @@ class ClipCommandWindow(QMainWindow):
         self.toggle_btn.clicked.connect(self._toggle)
         h_layout.addWidget(self.toggle_btn)
 
+        for btn in (self.dryrun_btn, edit_btn, log_btn, settings_btn, reload_btn, self.toggle_btn):
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
         main_layout.addWidget(header)
+
+        # Body wrapper so cards have breathing room against BG_MAIN
+        body = QWidget()
+        body.setObjectName("app_body")
+        body.setStyleSheet(f"#app_body {{ background-color: {C['bg_main']}; }}")
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(16, 0, 16, 10)
+        body_layout.setSpacing(10)
+        main_layout.addWidget(body, stretch=1)
 
         # ── Chain panel ───────────────────────────────────────────────────────
         self.chain_panel = QFrame()
         self.chain_panel.setObjectName("chain_panel")
         self.chain_panel.setFrameShape(QFrame.NoFrame)
         cp_layout = QVBoxLayout(self.chain_panel)
-        cp_layout.setContentsMargins(0, 4, 0, 4)
-        cp_layout.setSpacing(2)
+        cp_layout.setContentsMargins(0, 8, 0, 8)
+        cp_layout.setSpacing(4)
 
         rescan_bar = QWidget()
-        rescan_bar.setStyleSheet(f"background-color: {C['bg_mid']};")
+        rescan_bar.setObjectName("rescan_bar")
+        rescan_bar.setStyleSheet(f"#rescan_bar {{ background-color: {C['bg_mid']}; border: none; }}")
         rb_layout = QHBoxLayout(rescan_bar)
-        rb_layout.setContentsMargins(8, 0, 8, 0)
+        rb_layout.setContentsMargins(12, 0, 12, 4)
 
         self.chain_btn = QPushButton("⛓ Load chain…")
         self.chain_btn.setStyleSheet(
-            f"color: {C['chain']}; background-color: {C['bg_input']};"
-            f"border-radius: 4px; padding: 5px 10px;"
+            f"color: white; background-color: {C['chain']};"
+            f"border-radius: 6px; padding: 6px 14px; font-weight: 600;"
         )
+        self.chain_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.chain_btn.clicked.connect(self._open_chain_picker)
         rb_layout.addWidget(self.chain_btn)
 
         rb_layout.addStretch()
+        save_chain_btn = QPushButton("💾 Save as chain…")
+        save_chain_btn.setStyleSheet(
+            f"color: white; background-color: {C['fg_accent']};"
+            f"border-radius: 6px; padding: 6px 14px; font-weight: 600;"
+        )
+        save_chain_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_chain_btn.setToolTip("Save the current steps as a named chain in transforms.ini")
+        save_chain_btn.clicked.connect(self._save_as_chain)
+        rb_layout.addWidget(save_chain_btn)
+
         rescan_btn = QPushButton("⟳ Rescan folder")
+        rescan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         rescan_btn.clicked.connect(lambda: self._refresh_transforms())
         rb_layout.addWidget(rescan_btn)
         cp_layout.addWidget(rescan_bar)
 
         self.rows_widget = QWidget()
-        self.rows_widget.setStyleSheet(f"background-color: {C['bg_mid']};")
+        self.rows_widget.setObjectName("rows_widget")
+        self.rows_widget.setStyleSheet(f"#rows_widget {{ background-color: {C['bg_mid']}; border: none; }}")
         self.rows_layout = QVBoxLayout(self.rows_widget)
-        self.rows_layout.setContentsMargins(0, 0, 0, 0)
-        self.rows_layout.setSpacing(1)
+        self.rows_layout.setContentsMargins(12, 0, 12, 4)
+        self.rows_layout.setSpacing(4)
         cp_layout.addWidget(self.rows_widget)
 
-        main_layout.addWidget(self.chain_panel)
+        body_layout.addWidget(self.chain_panel)
 
         # ── Stats bar ─────────────────────────────────────────────────────────
         stats_bar = QFrame()
         stats_bar.setObjectName("stats_bar")
         sb_layout = QHBoxLayout(stats_bar)
-        sb_layout.setContentsMargins(8, 2, 8, 2)
+        sb_layout.setContentsMargins(4, 0, 4, 0)
         self.stats_label = QLabel("Transforms: 0  |  Errors: 0  |  Chain: —")
         self.stats_label.setObjectName("stats_label")
         sb_layout.addWidget(self.stats_label)
-        main_layout.addWidget(stats_bar)
+        body_layout.addWidget(stats_bar)
 
         # ── Log ───────────────────────────────────────────────────────────────
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         self.log.setObjectName("log")
-        main_layout.addWidget(self.log, stretch=1)
+        body_layout.addWidget(self.log, stretch=1)
 
         # ── Preview pane (hidden until dry run) ───────────────────────────────
         self.preview_frame = QFrame()
         self.preview_frame.setObjectName("preview_frame")
         self.preview_frame.setVisible(False)
         pf_layout = QVBoxLayout(self.preview_frame)
-        pf_layout.setContentsMargins(4, 4, 4, 4)
-        pf_layout.setSpacing(4)
+        pf_layout.setContentsMargins(12, 10, 12, 12)
+        pf_layout.setSpacing(6)
 
         ph_widget = QWidget()
         ph_layout = QHBoxLayout(ph_widget)
@@ -622,9 +813,11 @@ class ClipCommandWindow(QMainWindow):
         ph_layout.addWidget(preview_header_lbl)
         ph_layout.addStretch()
         clear_btn = QPushButton("✕ Clear")
+        clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         clear_btn.clicked.connect(self._clear_preview)
         ph_layout.addWidget(clear_btn)
         copy_btn = QPushButton("📋 Copy to clipboard")
+        copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         copy_btn.clicked.connect(self._copy_preview)
         ph_layout.addWidget(copy_btn)
         pf_layout.addWidget(ph_widget)
@@ -635,7 +828,7 @@ class ClipCommandWindow(QMainWindow):
         self.preview_text.setFixedHeight(140)
         pf_layout.addWidget(self.preview_text)
 
-        main_layout.addWidget(self.preview_frame)
+        body_layout.addWidget(self.preview_frame)
 
         # ── Status bar ────────────────────────────────────────────────────────
         self.statusbar_label = QLabel("Ready")
@@ -729,6 +922,8 @@ class ClipCommandWindow(QMainWindow):
                 self._log(f"Chain step '{step_name}' not found", "warn")
         if labels:
             self._set_chain_rows(labels)
+            self._loaded_chain_name = chain_entry.get("name", "")
+            self._loaded_chain_desc = chain_entry.get("description", "")
             self._log(
                 f"Loaded chain '{chain_entry['name']}': " + " → ".join(labels), "chain"
             )
@@ -758,100 +953,155 @@ class ClipCommandWindow(QMainWindow):
             self.chain_btn.setText("⛓ No chains")
             self.chain_btn.setEnabled(False)
             self.chain_btn.setStyleSheet(
-                f"color: {C['fg_dim']}; background-color: {C['bg_input']};"
-                f"border-radius: 4px; padding: 5px 10px;"
+                f"color: white; background-color: #9CA3AF;"
+                f"border-radius: 6px; padding: 6px 14px; font-weight: 600;"
             )
         else:
             self.chain_btn.setText(f"⛓ Load chain… ({n_valid}/{n_total})")
             self.chain_btn.setEnabled(True)
             self.chain_btn.setStyleSheet(
-                f"color: {C['chain']}; background-color: {C['bg_input']};"
-                f"border-radius: 4px; padding: 5px 10px;"
+                f"color: white; background-color: {C['chain']};"
+                f"border-radius: 6px; padding: 6px 14px; font-weight: 600;"
             )
 
     def _open_chain_picker(self):
-        """Open a modal dialog listing all chains to load."""
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QScrollArea
+        """Open a modal dialog listing all chains — load, or delete each."""
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout, QScrollArea, QMessageBox
+        )
 
-        all_chains = self._get_all_chains_with_status()
-        if not all_chains:
+        if not self._get_all_chains_with_status():
             self._log("No chains defined in transforms.ini", "warn")
             return
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("Load Chain")
+        dlg.setWindowTitle("Chains")
         dlg.setStyleSheet(build_stylesheet())
         dlg.setModal(True)
-        dlg.setMinimumWidth(420)
+        dlg.setMinimumWidth(460)
 
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(6)
 
-        header_lbl = QLabel("Select a chain to load:")
+        header_lbl = QLabel("Click a chain to load it, or 🗑 to delete:")
         header_lbl.setStyleSheet(
-            f"color: {C['fg']}; font-weight: bold; font-size: 11px; padding-bottom: 4px;"
+            f"color: {C['bg_dark']}; font-weight: 600; font-size: 11pt; padding-bottom: 4px;"
         )
         layout.addWidget(header_lbl)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet(f"background-color: {C['bg_mid']};")
+        scroll.setStyleSheet(f"background-color: {C['bg_main']}; border: none;")
 
         scroll_content = QWidget()
-        scroll_content.setStyleSheet(f"background-color: {C['bg_mid']};")
+        scroll_content.setStyleSheet(f"background-color: {C['bg_main']};")
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(4, 4, 4, 4)
         scroll_layout.setSpacing(4)
+        scroll.setWidget(scroll_content)
 
-        for chain, missing in all_chains:
-            is_valid = len(missing) == 0
-            row_widget = QWidget()
-            row_widget.setStyleSheet(f"background-color: {C['bg_mid']};")
-            row_layout = QHBoxLayout(row_widget)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.setSpacing(8)
+        def _clear_layout():
+            while scroll_layout.count():
+                item = scroll_layout.takeAt(0)
+                w = item.widget()
+                if w:
+                    w.deleteLater()
 
-            btn = QPushButton(chain["label"])
-            btn.setEnabled(is_valid)
-            btn.setFixedWidth(200)
-            btn.setStyleSheet(
-                f"color: {C['chain'] if is_valid else C['fg_dim']};"
-                f"background-color: {C['bg_input']}; border-radius: 4px; padding: 4px 8px;"
-                f"text-align: left;"
+        def _delete(chain):
+            resp = QMessageBox.question(
+                dlg, "Delete chain",
+                f"Delete chain '{chain['name']}'?\nThis edits transforms.ini and cannot be undone.",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
             )
+            if resp != QMessageBox.Yes:
+                return
+            try:
+                removed = delete_chain(self.transforms_folder, chain["name"])
+            except Exception as exc:
+                QMessageBox.warning(dlg, "Delete failed", str(exc))
+                return
+            if removed:
+                self._log(f"Deleted chain '{chain['name']}'", "warn")
+                self._refresh_transforms()
+                _populate()
+            else:
+                QMessageBox.information(
+                    dlg, "Not found",
+                    f"Chain '{chain['name']}' was not found in transforms.ini."
+                )
 
-            def _make_handler(c=chain):
-                def _handler():
-                    dlg.accept()
-                    self._load_chain(c)
-                    self._log(f"Chain loaded: {c['name']!r}", "chain")
-                return _handler
+        def _load(chain):
+            dlg.accept()
+            self._load_chain(chain)
+            self._log(f"Chain loaded: {chain['name']!r}", "chain")
 
-            if is_valid:
-                btn.clicked.connect(_make_handler())
+        def _populate():
+            _clear_layout()
+            all_chains = self._get_all_chains_with_status()
+            if not all_chains:
+                empty = QLabel("No chains left. Build steps and use “Save as chain…”.")
+                empty.setStyleSheet(f"color: {C['fg_dim']}; font-size: 10pt; padding: 12px;")
+                scroll_layout.addWidget(empty)
+                scroll_layout.addStretch()
+                return
+            for chain, missing in all_chains:
+                is_valid = len(missing) == 0
+                row_widget = QFrame()
+                row_widget.setObjectName("card")
+                row_widget.setStyleSheet(
+                    f"QFrame#card {{ background-color: {C['bg_mid']}; border: 1px solid {C['border']}; border-radius: 8px; }}"
+                )
+                row_layout = QHBoxLayout(row_widget)
+                row_layout.setContentsMargins(10, 8, 10, 8)
+                row_layout.setSpacing(8)
 
-            row_layout.addWidget(btn)
+                btn = QPushButton(chain["label"])
+                btn.setEnabled(is_valid)
+                btn.setFixedWidth(200)
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                btn.setStyleSheet(
+                    f"color: white; background-color: {C['chain'] if is_valid else '#9CA3AF'};"
+                    f"border-radius: 6px; padding: 6px 10px; text-align: left; font-weight: 600;"
+                )
+                if is_valid:
+                    btn.clicked.connect(lambda _=False, c=chain: _load(c))
+                row_layout.addWidget(btn)
 
-            desc = chain.get("description", "")
-            if not is_valid:
-                desc = f"⚠ missing: {', '.join(missing)}"
-            if desc:
-                desc_lbl = QLabel(desc)
+                desc = chain.get("description", "")
+                if not is_valid:
+                    desc = f"⚠ missing: {', '.join(missing)}"
+                desc_lbl = QLabel(desc or "")
                 desc_lbl.setStyleSheet(
-                    f"color: {C['warn'] if not is_valid else C['fg_dim']}; font-size: 10px;"
+                    f"color: {'#B45309' if not is_valid else C['fg_dim']}; font-size: 10px;"
                 )
                 desc_lbl.setWordWrap(True)
                 row_layout.addWidget(desc_lbl, stretch=1)
 
-            scroll_layout.addWidget(row_widget)
+                del_btn = QPushButton("🗑")
+                del_btn.setFixedWidth(36)
+                del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                del_btn.setToolTip(f"Delete chain '{chain['name']}'")
+                del_btn.setStyleSheet(
+                    f"color: white; background-color: {C['err']};"
+                    f"border-radius: 6px; padding: 6px 8px; font-weight: 600;"
+                )
+                del_btn.clicked.connect(lambda _=False, c=chain: _delete(c))
+                row_layout.addWidget(del_btn)
 
-        scroll_layout.addStretch()
-        scroll.setWidget(scroll_content)
+                scroll_layout.addWidget(row_widget)
+            scroll_layout.addStretch()
+
+        _populate()
         layout.addWidget(scroll)
 
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton("Close")
+        cancel_btn.setStyleSheet(
+            f"background-color: transparent; color: {C['fg_dim']};"
+            f"border: 1px solid {C['border']}; border-radius: 6px; padding: 6px 16px; font-weight: 500;"
+        )
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(dlg.reject)
         cancel_btn.setFixedWidth(80)
         btn_row = QHBoxLayout()
@@ -978,7 +1228,7 @@ class ClipCommandWindow(QMainWindow):
 
         # Title
         title = QLabel("Settings")
-        title.setStyleSheet(f"color: {C['fg']}; font-size: 13px; font-weight: bold;")
+        title.setStyleSheet(f"color: {C['bg_dark']}; font-size: 13pt; font-weight: 600;")
         layout.addWidget(title)
 
         # Form
@@ -991,10 +1241,6 @@ class ClipCommandWindow(QMainWindow):
         self._api_key_input.setPlaceholderText("sk-ant-...")
         self._api_key_input.setText(current_key)
         self._api_key_input.setEchoMode(QLineEdit.Password)
-        self._api_key_input.setStyleSheet(
-            f"background-color: {C['bg_input']}; color: {C['fg']}; "
-            f"border: 1px solid {C['fg_dim']}; border-radius: 4px; padding: 4px 8px;"
-        )
 
         # Show/hide toggle
         show_cb = QCheckBox("Show")
@@ -1013,7 +1259,7 @@ class ClipCommandWindow(QMainWindow):
 
         # Config file path (info only)
         cfg_path_lbl = QLabel(str(_config_path()))
-        cfg_path_lbl.setStyleSheet(f"color: {C['fg_dim']}; font-size: 10px;")
+        cfg_path_lbl.setStyleSheet(f"color: {C['fg_dim']}; font-size: 9pt;")
         cfg_path_lbl.setWordWrap(True)
         form.addRow(QLabel("Config file:"), cfg_path_lbl)
 
@@ -1024,7 +1270,7 @@ class ClipCommandWindow(QMainWindow):
             "The API key is stored in plain text in config.ini next to the executable. "
             "Required only for AI-powered transforms (e.g. aidinsight_email_reply)."
         )
-        note.setStyleSheet(f"color: {C['fg_dim']}; font-size: 10px;")
+        note.setStyleSheet(f"color: {C['fg_dim']}; font-size: 9pt;")
         note.setWordWrap(True)
         layout.addWidget(note)
 
@@ -1033,14 +1279,16 @@ class ClipCommandWindow(QMainWindow):
         btn_row.addStretch()
 
         cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet(
+            f"background-color: transparent; color: {C['fg_dim']};"
+            f"border: 1px solid {C['border']}; border-radius: 6px; padding: 6px 16px; font-weight: 500;"
+        )
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(dlg.reject)
         btn_row.addWidget(cancel_btn)
 
         save_btn = QPushButton("Save")
-        save_btn.setStyleSheet(
-            f"background-color: {C['bg_input']}; color: {C['ok']}; "
-            f"font-weight: bold; border-radius: 4px; padding: 5px 16px;"
-        )
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
         def _save():
             key = self._api_key_input.text().strip()
@@ -1070,6 +1318,126 @@ class ClipCommandWindow(QMainWindow):
         self._log_browser.raise_()
         self._log_browser._refresh()
 
+    def _open_transform_editor(self):
+        if getattr(self, "_editor", None) is None or not self._editor.isVisible():
+            self._editor = TransformEditorDialog(
+                self.transforms_folder, stylesheet=build_stylesheet(), parent=self
+            )
+            # Rescan the folder whenever the editor writes/deletes a file
+            self._editor.saved.connect(lambda: self._refresh_transforms())
+        self._editor.show()
+        self._editor.raise_()
+        self._editor.activateWindow()
+
+    def _save_as_chain(self):
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QMessageBox
+        )
+
+        steps = self._get_active_steps()
+        if len(steps) < 2:
+            QMessageBox.information(
+                self, "Save as chain",
+                "Add at least two steps before saving a chain."
+            )
+            return
+        step_names = [s["name"] for s in steps]
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Save as chain")
+        dlg.setStyleSheet(build_stylesheet())
+        dlg.setModal(True)
+        dlg.setMinimumWidth(460)
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        title = QLabel("Save current steps as a chain")
+        title.setStyleSheet(f"color: {C['bg_dark']}; font-size: 13pt; font-weight: 600;")
+        layout.addWidget(title)
+
+        # Editing an existing chain? Pre-fill from the last loaded chain.
+        editing = bool(self._loaded_chain_name)
+        if editing:
+            hint = QLabel(f"Editing chain “{self._loaded_chain_name}” — change the name to save a copy.")
+            hint.setStyleSheet(f"color: {C['fg_dim']}; font-size: 9pt;")
+            hint.setWordWrap(True)
+            layout.addWidget(hint)
+
+        form = QFormLayout()
+        form.setSpacing(8)
+
+        name_edit = QLineEdit(self._loaded_chain_name)
+        name_edit.setPlaceholderText("e.g. clean_and_convert")
+        form.addRow(QLabel("Name:"), name_edit)
+
+        desc_edit = QLineEdit(self._loaded_chain_desc)
+        desc_edit.setPlaceholderText("Optional description shown in the picker")
+        form.addRow(QLabel("Description:"), desc_edit)
+
+        layout.addLayout(form)
+
+        steps_lbl = QLabel("Steps:  " + "  →  ".join(step_names))
+        steps_lbl.setStyleSheet(f"color: {C['fg_accent']}; font-size: 9pt;")
+        steps_lbl.setWordWrap(True)
+        layout.addWidget(steps_lbl)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet(
+            f"background-color: transparent; color: {C['fg_dim']};"
+            f"border: 1px solid {C['border']}; border-radius: 6px; padding: 6px 16px; font-weight: 500;"
+        )
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(cancel_btn)
+        save_btn = QPushButton("Save")
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(save_btn)
+        layout.addLayout(btn_row)
+
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        raw = name_edit.text().strip()
+        if not raw:
+            QMessageBox.warning(self, "Save as chain", "A chain name is required.")
+            return
+        chain_name = raw.lower().replace(" ", "_")
+        desc = desc_edit.text().strip()
+
+        # Warn if overwriting a DIFFERENT existing chain than the one being edited
+        existing = {t["name"] for t in self._registry if t.get("is_chain")}
+        if chain_name in existing and chain_name != self._loaded_chain_name:
+            resp = QMessageBox.question(
+                self, "Overwrite chain?",
+                f"A chain named '{chain_name}' already exists. Overwrite it?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if resp != QMessageBox.Yes:
+                return
+
+        try:
+            ini_path = upsert_chain(
+                self.transforms_folder, chain_name, desc, step_names
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Save failed", f"Could not write chain:\n{exc}")
+            self._log(f"Save chain failed: {exc}", "err")
+            return
+
+        self._loaded_chain_name = chain_name
+        self._loaded_chain_desc = desc
+        self._log(
+            f"Saved chain '{chain_name}' → {', '.join(step_names)}  [{ini_path.name}]",
+            "chain",
+        )
+        self._set_status(f"Chain '{chain_name}' saved")
+        self._refresh_transforms()
+
     def _update_stats(self):
         steps = self._get_active_steps()
         if len(steps) == 1:
@@ -1079,7 +1447,7 @@ class ClipCommandWindow(QMainWindow):
         else:
             chain_str = "—"
         self.stats_label.setText(
-            f"Transforms: {self.transform_count}  |  "
+            f"Runs: {self.transform_count}  |  "
             f"Errors: {self.error_count}  |  "
             f"Chain: {chain_str}"
         )
@@ -1098,7 +1466,12 @@ class ClipCommandWindow(QMainWindow):
     def _copy_preview(self):
         content = self.preview_text.toPlainText()
         if content:
-            pyperclip.copy(content)
+            try:
+                clip_write(content)
+            except Exception as exc:
+                self._log(f"Clipboard write failed: {exc}", "err")
+                self._set_status("Clipboard busy — copy failed, try again")
+                return
             if hasattr(self, '_worker'):
                 self._worker.update_last(content)
             self._log("Preview content copied to clipboard", "ok")
@@ -1109,8 +1482,8 @@ class ClipCommandWindow(QMainWindow):
         if self.dry_run:
             self.dryrun_btn.setObjectName("dryrun_active")
             self.dryrun_btn.setStyleSheet(
-                f"background-color: #6d4c00; color: {C['warn']};"
-                f"border-radius: 4px; padding: 5px 10px;"
+                f"background-color: {C['warn']}; color: {C['fg']};"
+                f"border-radius: 6px; padding: 6px 14px; font-weight: 600;"
             )
             self.status_dot.setObjectName("status_dot_dry")
             self.status_dot.setStyleSheet(f"color: {C['dry']}; font-size: 16px;")
@@ -1139,18 +1512,21 @@ class ClipCommandWindow(QMainWindow):
             self.status_dot.setStyleSheet(f"color: {dot_colour}; font-size: 16px;")
 
     def _run_chain(self, clip_text: str, source: str = "clipboard"):
-        steps = self._get_active_steps()
-        if not steps:
-            self._log("No transforms active — add steps to the chain", "warn")
-            return
-
-        is_chain    = len(steps) > 1
-        chain_label = " → ".join(s["name"] for s in steps)
-
-        # Block clipboard worker and show working indicator
-        self._set_busy(True, chain_label)
-
+        # Always runs on the GUI thread (via _run_signal). The whole body is
+        # wrapped so busy is ALWAYS released — the worker sets busy=True before
+        # emitting, so any early return here must still clear it or polling stalls.
         try:
+            steps = self._get_active_steps()
+            if not steps:
+                self._log("No transforms active — add steps to the chain", "warn")
+                return
+
+            is_chain    = len(steps) > 1
+            chain_label = " → ".join(s["name"] for s in steps)
+
+            # Show working indicator (worker is already blocked)
+            self._set_busy(True, chain_label)
+
             if is_chain:
                 self._log(f"▶ Chain [{chain_label}] via {source}", "chain", chain_label)
             else:
@@ -1196,7 +1572,14 @@ class ClipCommandWindow(QMainWindow):
                     f"Dry run OK [{chain_label}] @ {datetime.now().strftime('%H:%M:%S')}"
                 )
             else:
-                pyperclip.copy(current)
+                try:
+                    clip_write(current)
+                except Exception as exc:
+                    self._log(f"  ✗ Clipboard write failed after retries: {exc}", "err")
+                    self._set_status("Clipboard busy — write failed, copy again")
+                    self.error_count += 1
+                    self._update_stats()
+                    return
                 if hasattr(self, '_worker'):
                     self._worker.update_last(current)
                 self._log(f"  ✓ {len(current)} chars written to clipboard", "ok")
@@ -1208,7 +1591,8 @@ class ClipCommandWindow(QMainWindow):
             self._update_stats()
 
         finally:
-            self._set_busy(False, chain_label)
+            # No label arg — chain_label may be unset if we returned on "no steps"
+            self._set_busy(False)
 
     # ── Polling ───────────────────────────────────────────────────────────────
 
@@ -1233,8 +1617,10 @@ class ClipCommandWindow(QMainWindow):
             self._worker = ClipboardWorker(self.poll_interval)
             self._thread = QThread()
             self._worker.moveToThread(self._thread)
+            # Emit-only lambda runs on the worker thread but merely re-emits a
+            # signal; the actual work (_run_chain) is delivered to the GUI thread.
             self._worker.clip_changed.connect(
-                lambda text: self._run_chain(text, source="clipboard change")
+                lambda text: self._run_signal.emit(text, "clipboard change")
             )
             self._thread.started.connect(self._worker.run)
             self._thread.start()
@@ -1250,14 +1636,17 @@ class ClipCommandWindow(QMainWindow):
             return
 
         def _on_hotkey():
+            # Runs on the 'keyboard' library's listener thread — must NOT touch
+            # the GUI or run the chain directly. Marshal to the GUI thread.
             try:
-                clip = pyperclip.paste()
-                if clip:
-                    self._run_chain(clip, source=f"hotkey ({self.hotkey})")
-                else:
-                    self._log("Hotkey pressed but clipboard is empty", "warn")
+                clip = clip_read()
             except Exception as exc:
                 self._log(f"Hotkey error: {exc}", "err")
+                return
+            if clip:
+                self._run_signal.emit(clip, f"hotkey ({self.hotkey})")
+            else:
+                self._log("Hotkey pressed but clipboard is empty", "warn")
 
         keyboard.add_hotkey(self.hotkey, _on_hotkey)
         self._log(f"Hotkey registered: {self.hotkey}", "ok")
@@ -1305,7 +1694,7 @@ def parse_args():
     )
     parser.add_argument("--script",     "-s", default=None)
     parser.add_argument("--transforms", "-t",
-                        default=str(Path(__file__).parent / "transforms"))
+                        default=str(_app_root() / "transforms"))
     parser.add_argument("--hotkey",     "-k", default=None)
     parser.add_argument("--poll",       "-p", type=float, default=0.5)
     return parser.parse_args()
@@ -1314,6 +1703,7 @@ def parse_args():
 def main():
     args = parse_args()
     app  = QApplication(sys.argv)
+    app.setStyle("Fusion")  # windowsvista blends QSS button colours into pale pastels
     app.setApplicationName("ClipCommand")
     win  = ClipCommandWindow(
         transforms_folder=args.transforms,

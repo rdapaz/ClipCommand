@@ -15,93 +15,106 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont
 
 C = {
-    "bg_dark":  "#1e2127",
-    "bg_mid":   "#282a36",
-    "bg_input": "#44475a",
-    "fg":       "#f8f8f2",
-    "fg_dim":   "#6272a4",
-    "fg_accent":"#8be9fd",
-    "ok":       "#50fa7b",
-    "err":      "#ff5555",
-    "warn":     "#ffb86c",
-    "chain":    "#bd93f9",
-    "preview":  "#bd93f9",
-    "info":     "#8be9fd",
-    "ts":       "#6272a4",
+    "bg_main":  "#F5F6FA",   # BG_MAIN
+    "bg_dark":  "#1F3864",   # NAVY
+    "bg_mid":   "#FFFFFF",   # BG_CARD
+    "bg_input": "#1F3864",   # NAVY
+    "fg":       "#1A1A2E",   # TEXT_PRIMARY
+    "fg_dim":   "#6B7280",   # TEXT_SECONDARY
+    "fg_accent":"#4E79A7",   # ACCENT
+    "ok":       "#22C55E",   # POSITIVE
+    "err":      "#EF4444",   # NEGATIVE
+    "warn":     "#F59E0B",   # WARNING
+    "chain":    "#4E79A7",   # ACCENT
+    "preview":  "#4E79A7",   # ACCENT
+    "info":     "#4E79A7",   # ACCENT
+    "ts":       "#6B7280",   # TEXT_SECONDARY
+    "border":   "#E5E7EB",   # BORDER
 }
 
+# Darker, text-safe variants — the bright semantic colours in C fail contrast
+# as small foreground text on the white table/detail-pane background.
 TAG_COLOURS = {
-    "ok":      C["ok"],
-    "err":     C["err"],
-    "warn":    C["warn"],
-    "info":    C["info"],
-    "chain":   C["chain"],
-    "preview": C["preview"],
+    "ok":      "#15803D",
+    "err":     "#B91C1C",
+    "warn":    "#B45309",
+    "info":    "#2C5282",
+    "chain":   "#2C5282",
+    "preview": "#2C5282",
     "ts":      C["ts"],
 }
 
 STYLESHEET = f"""
 QDialog, QWidget {{
-    background-color: {C["bg_dark"]};
+    background-color: {C["bg_main"]};
     color: {C["fg"]};
-    font-family: "Menlo", "Courier New", monospace;
-    font-size: 11px;
+    font-family: "Segoe UI";
+    font-size: 10pt;
 }}
 QPushButton {{
-    background-color: {C["bg_input"]};
-    color: {C["fg"]};
+    background-color: {C["bg_dark"]};
+    color: white;
     border: none;
-    border-radius: 4px;
-    padding: 4px 10px;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-weight: 600;
 }}
-QPushButton:hover {{ background-color: #6272a4; }}
+QPushButton:hover {{ background-color: #2B4A8C; }}
 QComboBox {{
-    background-color: {C["bg_input"]};
+    background-color: white;
     color: {C["fg"]};
-    border: 1px solid {C["fg_dim"]};
-    border-radius: 4px;
-    padding: 3px 6px;
+    border: 1px solid {C["border"]};
+    border-radius: 6px;
+    padding: 5px 10px;
 }}
+QComboBox:hover, QComboBox:focus {{ border-color: {C["bg_dark"]}; }}
 QComboBox QAbstractItemView {{
-    background-color: {C["bg_input"]};
+    background-color: white;
     color: {C["fg"]};
-    selection-background-color: #6272a4;
+    selection-background-color: #E8EDF5;
+    selection-color: {C["bg_dark"]};
+    border: 1px solid {C["border"]};
 }}
 QTableWidget {{
     background-color: {C["bg_mid"]};
     color: {C["fg"]};
-    gridline-color: {C["bg_dark"]};
-    border: none;
-    selection-background-color: #44475a;
+    gridline-color: transparent;
+    border: 1px solid {C["border"]};
+    border-radius: 8px;
+    selection-background-color: #E8EDF5;
+    selection-color: {C["bg_dark"]};
 }}
-QTableWidget::item {{ padding: 2px 6px; }}
+QTableWidget::item {{ padding: 4px 8px; border-bottom: 1px solid #F3F4F6; }}
 QHeaderView::section {{
-    background-color: {C["bg_input"]};
-    color: {C["fg_dim"]};
+    background-color: #F9FAFB;
+    color: {C["bg_dark"]};
+    font-weight: 600;
     border: none;
-    padding: 4px 6px;
-    font-size: 10px;
+    border-bottom: 2px solid {C["border"]};
+    padding: 6px 8px;
+    font-size: 9pt;
 }}
 QTextEdit {{
     background-color: {C["bg_mid"]};
     color: {C["fg"]};
-    border: none;
-    font-family: "Menlo", "Courier New", monospace;
-    font-size: 11px;
+    border: 1px solid {C["border"]};
+    border-radius: 8px;
+    font-family: "Cascadia Code", "Consolas", monospace;
+    font-size: 9pt;
 }}
-QSplitter::handle {{ background-color: {C["bg_dark"]}; height: 3px; }}
+QSplitter::handle {{ background-color: {C["bg_main"]}; height: 4px; }}
 QLabel#section_label {{
     color: {C["fg_dim"]};
-    font-size: 10px;
+    font-size: 9pt;
     padding: 2px 4px;
 }}
 QScrollBar:vertical {{
-    background: {C["bg_dark"]};
-    width: 8px;
+    background: {C["bg_main"]};
+    width: 10px;
 }}
 QScrollBar::handle:vertical {{
-    background: {C["bg_input"]};
-    border-radius: 4px;
+    background: #C9CED8;
+    border-radius: 5px;
     min-height: 20px;
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
@@ -159,10 +172,16 @@ class LogBrowserDialog(QDialog):
         tb_layout.addWidget(self.count_label)
 
         refresh_btn = QPushButton("⟳ Refresh")
+        refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         refresh_btn.clicked.connect(self._refresh)
         tb_layout.addWidget(refresh_btn)
 
         clear_btn = QPushButton("🗑 Clear session")
+        clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        clear_btn.setStyleSheet(
+            f"background-color: {C['err']}; color: white; border-radius: 6px;"
+            f"padding: 6px 14px; font-weight: 600;"
+        )
         clear_btn.clicked.connect(self._clear_session)
         tb_layout.addWidget(clear_btn)
 
