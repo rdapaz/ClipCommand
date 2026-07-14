@@ -12,6 +12,7 @@ Provides:
 """
 
 from collections import OrderedDict
+import re
 import time
 import yaml
 import yaml.constructor
@@ -24,15 +25,25 @@ except ImportError:
 
 try:
     import win32com.client
+    import pywintypes
     WIN32_AVAILABLE = True
 except ImportError:
     WIN32_AVAILABLE = False
 
 
-# ── YAML loader that preserves insertion order ────────────────────────────────
+# ── YAML loader that preserves insertion order and source lines ───────────────
+
+class LineTrackedDict(OrderedDict):
+    """OrderedDict that also remembers the 1-based source line of each key."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.key_lines = {}
+
 
 class OrderedDictYAMLLoader(yaml.Loader):
-    """YAML loader that loads mappings into OrderedDicts, preserving key order."""
+    """YAML loader that loads mappings into OrderedDicts, preserving key order
+    and recording each key's source line (for error reporting)."""
 
     def __init__(self, *args, **kwargs):
         yaml.Loader.__init__(self, *args, **kwargs)
@@ -42,9 +53,11 @@ class OrderedDictYAMLLoader(yaml.Loader):
             'tag:yaml.org,2002:omap', type(self).construct_yaml_map)
 
     def construct_yaml_map(self, node):
-        data = OrderedDict()
+        data = LineTrackedDict()
         yield data
-        data.update(self.construct_mapping(node))
+        mapping = self.construct_mapping(node)
+        data.update(mapping)
+        data.key_lines.update(getattr(mapping, 'key_lines', {}))
 
     def construct_mapping(self, node, deep=False):
         if isinstance(node, yaml.MappingNode):
@@ -55,7 +68,7 @@ class OrderedDictYAMLLoader(yaml.Loader):
                 f'expected a mapping node, but found {node.id}',
                 node.start_mark
             )
-        mapping = OrderedDict()
+        mapping = LineTrackedDict()
         for key_node, value_node in node.value:
             key   = self.construct_object(key_node, deep=deep)
             try:
@@ -66,6 +79,7 @@ class OrderedDictYAMLLoader(yaml.Loader):
                     f'found unacceptable key ({exc})', key_node.start_mark
                 )
             mapping[key] = self.construct_object(value_node, deep=deep)
+            mapping.key_lines[key] = key_node.start_mark.line + 1
         return mapping
 
 
@@ -88,6 +102,68 @@ def _is_date_like(string):
         return True
     except ValueError:
         return False
+
+
+# ── Error / spec helpers ──────────────────────────────────────────────────────
+
+# MS Project duration: number + unit, optional 'e' (elapsed) prefix and
+# '?' (estimated) suffix — e.g. 3d  4hrs  2wk  1mo  0d  5edays  3d?
+_DURATION_RE = re.compile(
+    r'^\d+(?:\.\d+)?\s*'
+    r'e?(?:months?|mons?|mo|weeks?|wks?|w|days?|d|hours?|hrs?|h|mins?|m)'
+    r'\??$',
+    re.IGNORECASE,
+)
+
+
+def _describe_error(exc) -> str:
+    """Turn an exception into a readable message; unwraps COM error tuples
+    like (-2147352567, 'Exception occurred.', (1004, 'Microsoft Project',
+    'The argument value is not valid.', ...), ...) into their description."""
+    if WIN32_AVAILABLE and isinstance(exc, pywintypes.com_error):
+        excepinfo = getattr(exc, 'excepinfo', None)
+        if excepinfo and len(excepinfo) > 2 and excepinfo[2]:
+            return str(excepinfo[2]).strip()
+        strerror = getattr(exc, 'strerror', None)
+        if strerror:
+            return str(strerror).strip()
+    return str(exc)
+
+
+def _parse_leaf_spec(value):
+    """
+    Parse a leaf task value into one of:
+        ('manual', start, finish)          — "start_date|finish_date"
+        ('auto',   duration, resources)    — "duration|resources"
+    Raises ValueError with a precise reason if the value is neither.
+    """
+    text  = str(value).strip()
+    parts = text.split('|', 1)
+    first = parts[0].strip()
+    rest  = parts[1].strip() if len(parts) > 1 else ''
+
+    if not first:
+        raise ValueError(
+            f"empty task value {text!r} — expected \"duration|resources\" "
+            f"or \"start_date|finish_date\""
+        )
+
+    if _is_date_like(first):
+        finish = rest if rest else first
+        if not _is_date_like(finish):
+            raise ValueError(
+                f"start {first!r} is a date but finish {finish!r} is not — "
+                f"expected \"start_date|finish_date\""
+            )
+        return ('manual', first, finish)
+
+    if _DURATION_RE.match(first):
+        return ('auto', first, rest)
+
+    raise ValueError(
+        f"can't interpret {first!r} as a duration (e.g. 3d, 4hrs, 2wk) "
+        f"or a date (e.g. 2026-07-14) — full value was {text!r}"
+    )
 
 
 # ── Microsoft Project COM wrapper ─────────────────────────────────────────────
@@ -169,36 +245,48 @@ class MicrosoftProject:
     # ── Recursive YAML walker ─────────────────────────────────────────────────
 
     def yaml_to_gantt(self, obj: OrderedDict, nesting: int = 0):
-        self._app.ScreenUpdating = False
+        # Only toggle screen updating at the top level — the recursive calls
+        # used to re-enable it early via their own finally blocks.
+        if nesting == 0:
+            self._app.ScreenUpdating = False
         try:
+            key_lines = getattr(obj, 'key_lines', {})
             for task, rest in obj.items():
+                line  = key_lines.get(task)
+                where = f"YAML line {line}, " if line else ""
                 if isinstance(rest, OrderedDict):
                     # Mapping value → summary / parent task
-                    self.add_summary_task(task_name=task, nesting=nesting)
+                    try:
+                        self.add_summary_task(task_name=task, nesting=nesting)
+                    except Exception as exc:
+                        raise ValueError(
+                            f"{where}summary task '{task}': {_describe_error(exc)}"
+                        ) from exc
                     self.yaml_to_gantt(rest, nesting + 1)
                 else:
                     # Scalar value → leaf task
-                    val = str(rest).split('|', 1)[0].strip()
-                    if _is_date_like(val):
-                        # "start_date|finish_date" → manual fixed-date task
-                        parts  = str(rest).split('|', 1)
-                        start  = parts[0].strip()
-                        finish = parts[1].strip() if len(parts) > 1 else parts[0].strip()
-                        self.add_manual_task(
-                            task_name=task, nesting=nesting,
-                            start=start, finish=finish
-                        )
-                    else:
-                        # "duration|resources" → auto-scheduled task
-                        parts = str(rest).split('|', 1)
-                        duration  = parts[0].strip()
-                        resources = parts[1].strip() if len(parts) > 1 else ""
-                        self.add_auto_task(
-                            task_name=task, nesting=nesting,
-                            duration=duration, resources=resources
-                        )
+                    try:
+                        kind, a, b = _parse_leaf_spec(rest)
+                        if kind == 'manual':
+                            # "start_date|finish_date" → manual fixed-date task
+                            self.add_manual_task(
+                                task_name=task, nesting=nesting,
+                                start=a, finish=b
+                            )
+                        else:
+                            # "duration|resources" → auto-scheduled task
+                            self.add_auto_task(
+                                task_name=task, nesting=nesting,
+                                duration=a, resources=b
+                            )
+                    except Exception as exc:
+                        raise ValueError(
+                            f"{where}task '{task}' (value {str(rest)!r}): "
+                            f"{_describe_error(exc)}"
+                        ) from exc
         finally:
-            self._app.ScreenUpdating = True
+            if nesting == 0:
+                self._app.ScreenUpdating = True
 
 
 # ── Convenience entry point ───────────────────────────────────────────────────
