@@ -42,6 +42,8 @@ Thumbs.db
 # Keep the transforms/ folder structure but ignore any personal/sensitive scripts
 # you don't want to publish. Add patterns here, e.g.:
 # transforms/my_private_*.py
+transforms/qnap_add_download.py
+config.ini
 clipcommand.db
 clipcommand.db-shm
 clipcommand.db-wal
