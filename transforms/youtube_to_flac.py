@@ -31,18 +31,22 @@ AAC stream (the m4a default) avoids both.
 OUTPUT_DIR       = "~/Music/YouTube"  # where finished tracks land
 FILENAME_FORMAT  = "%(artist,uploader)s - %(track,title)s.%(ext)s"
 
-# m4a  — YouTube's own AAC stream, copied out without re-encoding. Smallest
-#        files, no second generation of loss. Best choice for most players.
-# flac — lossless container. Same audio as m4a but ~4x the size; use it only
-#        for a player that handles AAC badly.
-# mp3  — re-encodes to MP3. Bigger than m4a and loses a little more; only
-#        worth it for something that genuinely cannot play AAC.
-AUDIO_MODE       = "m4a"
+# mp3  — re-encodes at V0 (~245 kbps). The default: it plays everywhere, and
+#        FLAC of real music runs ~1.4 Mbps regardless of how small the lossy
+#        source was, which is roughly 12x an hour-long mix for no audible gain.
+# m4a  — YouTube's own AAC stream, copied out without re-encoding. Smallest,
+#        and the only mode with no second generation of loss — but many
+#        players cannot open MP4 containers. tornade-tui, for instance,
+#        compiles the AAC decoder but no isomp4 demuxer, so .m4a never plays.
+# flac — lossless container. Identical audio to m4a (YouTube is lossy either
+#        way), so it buys compatibility, not quality, at a large size cost.
+AUDIO_MODE       = "mp3"
 
 SQUARE_COVER     = 1      # 1 = centre-crop cover art to a square (looks right on a DAP)
 CLEAN_TAGS       = 1      # 1 = keep only real music tags, drop the YouTube description
 COMPRESSION      = 8      # FLAC compression level 0–12; higher = smaller, slower
 NO_PLAYLIST      = 1      # 1 = grab only the video, even if the URL has a list= param
+SKIP_LIVE        = 1      # 1 = refuse live streams; they record until stopped
 SKIP_DUPLICATES  = 1      # 1 = remember downloads and never fetch the same track twice
 KEEP_URL         = 1      # 1 = leave the URL on the clipboard; 0 = replace with status
 NOTIFY           = 1      # 1 = desktop notification when a download finishes
@@ -217,6 +221,10 @@ def _build_command(url: str, ytdlp: str, ffmpeg: str, out_dir: Path) -> list:
         cmd += ["--ffmpeg-location", str(Path(ffmpeg).parent)]
     if NO_PLAYLIST:
         cmd.append("--no-playlist")
+    if SKIP_LIVE:
+        # A live stream has no end, so yt-dlp records it until something kills
+        # the process — a 24/7 radio channel will happily fill the disk.
+        cmd += ["--match-filter", "!is_live"]
     if SKIP_DUPLICATES:
         cmd += ["--download-archive", str(out_dir / ".downloaded.txt")]
     if SQUARE_COVER:
