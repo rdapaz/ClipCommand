@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Download a copied YouTube URL as FLAC with embedded cover art and tags.
+Download a copied YouTube URL as tagged audio with embedded cover art.
 
 Copy any YouTube / YouTube Music link and the audio is fetched in the
-background, converted to FLAC, tagged (artist / title / album / year) and given
-embedded cover art. Anything that isn't a YouTube URL passes through untouched,
-so this is safe to leave selected while you use the clipboard normally.
+background, tagged (artist / title / album / year) and given embedded cover
+art. Anything that isn't a YouTube URL passes through untouched, so this is
+safe to leave selected while you use the clipboard normally.
+
+Set AUDIO_MODE below to choose the output format.
 
 Works on Windows and macOS. Requires the yt-dlp and ffmpeg binaries:
 
@@ -17,15 +19,25 @@ shell PATH, so the binaries are also looked for in the usual install locations.
 Set YTDLP_PATH / FFMPEG_PATH below (or in transforms.ini) to point at them
 explicitly if they live somewhere unusual.
 
-Note on quality: YouTube only ever serves lossy audio, so the FLAC is lossless
-with respect to the download, not to the original recording. It is the right
-choice for players that handle Opus badly, not a way to recover lost quality.
+Note on quality: YouTube only ever serves lossy audio. FLAC here is lossless
+with respect to the download, not to the original recording, so it cannot
+recover anything YouTube already discarded — it only costs space. Re-encoding
+to MP3 adds a second generation of loss on top of the first. Copying out the
+AAC stream (the m4a default) avoids both.
 """
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 OUTPUT_DIR       = "~/Music/YouTube"  # where finished tracks land
 FILENAME_FORMAT  = "%(artist,uploader)s - %(track,title)s.%(ext)s"
+
+# m4a  — YouTube's own AAC stream, copied out without re-encoding. Smallest
+#        files, no second generation of loss. Best choice for most players.
+# flac — lossless container. Same audio as m4a but ~4x the size; use it only
+#        for a player that handles AAC badly.
+# mp3  — re-encodes to MP3. Bigger than m4a and loses a little more; only
+#        worth it for something that genuinely cannot play AAC.
+AUDIO_MODE       = "m4a"
 
 SQUARE_COVER     = 1      # 1 = centre-crop cover art to a square (looks right on a DAP)
 CLEAN_TAGS       = 1      # 1 = keep only real music tags, drop the YouTube description
@@ -159,11 +171,19 @@ def _notify(title: str, message: str) -> None:
 # ── Download ──────────────────────────────────────────────────────────────────
 
 def _build_command(url: str, ytdlp: str, ffmpeg: str, out_dir: Path) -> list:
+    mode = str(AUDIO_MODE).strip().lower()
+    if mode not in ("m4a", "flac", "mp3"):
+        mode = "m4a"
+
+    # Preferring the mp4a stream lets yt-dlp copy the audio straight out
+    # instead of re-encoding it. Falls back to whatever is on offer.
+    fmt = "bestaudio[acodec^=mp4a]/bestaudio/best" if mode == "m4a" else "bestaudio/best"
+
     cmd = [
         ytdlp,
-        "--format", "bestaudio/best",
+        "--format", fmt,
         "--extract-audio",
-        "--audio-format", "flac",
+        "--audio-format", mode,
         "--audio-quality", "0",
         "--embed-thumbnail",
         # YouTube serves WebP thumbnails, which will not embed into FLAC —
@@ -177,7 +197,6 @@ def _build_command(url: str, ytdlp: str, ffmpeg: str, out_dir: Path) -> list:
         "--parse-metadata", "%(track,title)s:%(meta_title)s",
         "--parse-metadata", "%(album,playlist_title,title)s:%(meta_album)s",
         "--parse-metadata", "%(release_year,upload_date>%Y)s:%(meta_date)s",
-        "--postprocessor-args", f"ffmpeg:-compression_level {COMPRESSION}",
         "--output", str(out_dir / FILENAME_FORMAT),
         "--no-overwrites",
         "--retries", "5",
@@ -186,6 +205,8 @@ def _build_command(url: str, ytdlp: str, ffmpeg: str, out_dir: Path) -> list:
         "--newline",
     ]
 
+    if mode == "flac":
+        cmd += ["--postprocessor-args", f"ffmpeg:-compression_level {COMPRESSION}"]
     if CLEAN_TAGS:
         # --embed-metadata otherwise writes the whole video description into the
         # file. Blanking a field only makes yt-dlp fall back to the next source,
