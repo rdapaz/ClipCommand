@@ -376,7 +376,12 @@ def delete_chain(folder: str, name: str) -> bool:
 
 def get_transform_overrides(cfg, stem: str) -> dict:
     section = f"transform:{stem}"
-    return dict(cfg[section]) if cfg.has_section(section) else {}
+    if not cfg.has_section(section):
+        return {}
+    # configparser lowercases option names, but transforms expose their settings
+    # as ALL_CAPS constants — without this the setattr in load_transform creates
+    # a new lowercase attribute and the real constant is never overridden.
+    return {key.upper(): value for key, value in cfg[section].items()}
 
 
 def get_chains(cfg) -> list:
